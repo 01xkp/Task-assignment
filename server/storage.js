@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { config } from './config.js'
+import { normalizeUploadedFilename } from './documents.js'
 import { projectContext } from './project-context.js'
 
 export const developers = [
@@ -88,6 +89,7 @@ export function publicState(state) {
     ...state,
     prds: state.prds.map(({ content, ...prd }) => ({
       ...prd,
+      sourceLabel: prd.sourceType === 'file' ? normalizeUploadedFilename(prd.sourceLabel) : prd.sourceLabel,
       excerpt: content.slice(0, 180),
       contentLength: content.length,
     })),

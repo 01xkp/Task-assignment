@@ -247,7 +247,7 @@ function statusClass(status) {
           </div>
           <div class="model-identity">
             <div class="model-icon"><Bot :size="22" /></div>
-            <div><strong>{{ workspace.model.model }}</strong><small>复核：{{ workspace.model.reviewModel }}</small></div>
+            <div><strong>{{ workspace.model.model }}</strong><small>分析与复核使用当前环境配置</small></div>
           </div>
           <div class="model-facts">
             <span><CheckCircle2 :size="14" /> 高强度推理</span>

@@ -74,11 +74,11 @@ export const api = {
       body: JSON.stringify({ title, content }),
     })
   },
-  async analyzePrd(id, review = true, { model, onProgress } = {}) {
+  async analyzePrd(id, review = true, { onProgress } = {}) {
     const response = await fetch(`/api/prds/${id}/analyze`, {
       method: 'POST',
       headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
-      body: JSON.stringify({ review, model }),
+      body: JSON.stringify({ review }),
     })
     if (!response.ok) {
       const data = await response.json().catch(() => ({}))

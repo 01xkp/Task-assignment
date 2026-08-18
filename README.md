@@ -15,8 +15,8 @@
 ## 功能
 
 - 导入 PDF、DOCX、Markdown、TXT、JSON，或读取在线网页与文档直链。
-- 在 `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna` 之间选择分析模型。
-- 拆分共享实现、平台适配和平台验收任务，并可启用第二次模型复核。
+- 使用 `.env.local` 的 `OPENAI_MODEL` 完成任务拆分和可选方案复核。
+- 拆分共享实现、平台适配和平台验收任务，并可启用第二次方案复核。
 - 展示上下文准备、任务拆分、复核、保存等实时进度，分析期间阻止关闭弹窗和重复提交。
 - 支持任务状态流转、人工重分配、AI 重分配建议，以及必填的重分配原因和备注。
 - 把调整原因写入本地知识库，供后续分析检索；单条知识记录可以二次确认后删除。
@@ -36,10 +36,9 @@ Copy-Item .env.example .env.local
 
 ```dotenv
 OPENAI_API_KEY=your-key
-OPENAI_BASE_URL=https://xflz.freedomlove.top
-OPENAI_MODEL=gpt-5.6-sol
-OPENAI_REVIEW_MODEL=gpt-5.6-sol
-OPENAI_REASONING_EFFORT=xhigh
+OPENAI_BASE_URL=https://sub2api.moreuos.com
+OPENAI_MODEL=gpt-5.6-terra
+OPENAI_REASONING_EFFORT=high
 OPENAI_DISABLE_RESPONSE_STORAGE=true
 OPENAI_REQUEST_TIMEOUT_MS=360000
 PORT=5174
@@ -63,7 +62,7 @@ npm run stop:dev
 
 如果服务正在当前 PowerShell 窗口前台运行，直接按 `Ctrl+C` 也可以完整停止。不要只结束 `5174` 的监听进程，因为开发模式下 `node --watch` 可能重新启动 API。
 
-页面只选择模型。推理强度由服务端的 `OPENAI_REASONING_EFFORT` 统一控制，修改后需要重启 API 服务。
+任务拆分和方案复核都使用服务端 `OPENAI_MODEL`。推理强度由 `OPENAI_REASONING_EFFORT` 统一控制；修改任一配置后需要重启 API 服务。
 
 ## 生产运行
 
@@ -91,7 +90,7 @@ Express 会在 `5174` 端口同时提供 API 和 `dist` 前端，访问 [http://
 src/                         Vue 3 工作台与交互组件
 src/components/              PRD、任务、知识库、弹窗和分析进度
 server/index.js              Express API、SSE 进度与业务工作流
-server/model.js              Responses API、结构化输出与双模型复核
+server/model.js              Responses API、结构化输出与方案复核
 server/knowledge.js          本地知识检索与提示词上下文
 server/documents.js          本地和在线文档解析
 server/storage.js            JSON 数据持久化与开发成员配置

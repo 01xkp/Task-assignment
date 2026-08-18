@@ -124,22 +124,19 @@ async function updateStatus(task, status) {
   }
 }
 
-async function analyzeExisting(payload) {
-  const prd = payload.prd || payload
-  const selectedModel = payload.model
+async function analyzeExisting(prd) {
   if (!workspace.value.model.configured) {
     notify('请先在 .env.local 中配置 OPENAI_API_KEY', 'error')
     return
   }
   analyzingPrdId.value = prd.id
-  existingAnalysisProgress.value = { stage: 'connecting', percent: 2, message: '正在连接模型服务', model: selectedModel || workspace.value.model.model, reasoningEffort: workspace.value.model.reasoningEffort }
+  existingAnalysisProgress.value = { stage: 'connecting', percent: 2, message: '正在连接模型服务', model: workspace.value.model.model, reasoningEffort: workspace.value.model.reasoningEffort }
   existingAnalysisElapsed.value = 0
   window.clearInterval(existingAnalysisTimer)
   existingAnalysisTimer = window.setInterval(() => { existingAnalysisElapsed.value += 1 }, 1000)
   try {
     notify(`正在分析「${prd.title}」`, 'progress')
     const result = await api.analyzePrd(prd.id, true, {
-      model: selectedModel,
       onProgress: (progress) => { existingAnalysisProgress.value = progress },
     })
     await handleAnalyzed(result)

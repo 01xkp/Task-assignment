@@ -248,7 +248,9 @@ function normalizeAllocation(result) {
   }
 }
 
-export async function analyzePrd({ prd, knowledge, workloads, useReview = true, model = config.model, reviewModel = config.reviewModel, reasoningEffort = config.reasoningEffort, onProgress }) {
+export async function analyzePrd({ prd, knowledge, workloads, useReview = true, reasoningEffort = config.reasoningEffort, onProgress }) {
+  const model = config.model
+  const reviewModel = config.model
   const system = `你是 Agino Flutter 多端客户端的资深研发项目经理。只生成 Flutter 客户端开发、平台适配和客户端验收任务，只能分配给给定三位开发者。
 
 拆分规则：

@@ -35,13 +35,21 @@ async function extractBuffer(buffer, filename, contentType = '') {
   return cleanText(buffer.toString('utf8'))
 }
 
+export function normalizeUploadedFilename(filename) {
+  const raw = String(filename || '')
+  if (!/[\u00c2-\u00f4][\u0080-\u00bf]/.test(raw)) return raw
+  const decoded = Buffer.from(raw, 'latin1').toString('utf8')
+  return decoded.includes('\ufffd') ? raw : decoded
+}
+
 export async function parseUploadedFile(file) {
-  const content = await extractBuffer(file.buffer, file.originalname, file.mimetype)
+  const filename = normalizeUploadedFilename(file.originalname)
+  const content = await extractBuffer(file.buffer, filename, file.mimetype)
   if (content.length < 20) throw new Error('文档内容过短或无法识别')
   return {
-    title: inferTitle(content, path.parse(file.originalname).name),
+    title: inferTitle(content, path.parse(filename).name),
     content,
-    sourceLabel: file.originalname,
+    sourceLabel: filename,
   }
 }
 
@@ -84,4 +92,3 @@ export async function fetchOnlineDocument(urlValue) {
   if (content.length < 20) throw new Error('页面没有可读取的 PRD 正文')
   return { title: title.slice(0, 80), content, sourceLabel: url.toString() }
 }
-

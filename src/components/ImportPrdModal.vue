@@ -17,7 +17,6 @@ const busy = ref(false)
 const analyzing = ref(false)
 const dragging = ref(false)
 const useReview = ref(true)
-const selectedModel = ref(props.model?.availableModels?.[0]?.id || props.model?.model || '')
 const analysisProgress = ref(null)
 const elapsedSeconds = ref(0)
 let elapsedTimer = null
@@ -33,8 +32,6 @@ const canImport = computed(() => {
   if (mode.value === 'url') return /^https?:\/\//.test(url.value)
   return content.value.trim().length >= 20
 })
-
-const availableModels = computed(() => props.model?.availableModels || [])
 
 function startElapsedTimer() {
   elapsedSeconds.value = 0
@@ -92,11 +89,10 @@ async function analyze() {
     return
   }
   analyzing.value = true
-  analysisProgress.value = { stage: 'connecting', percent: 2, message: '正在连接模型服务', model: selectedModel.value, reasoningEffort: props.model?.reasoningEffort }
+  analysisProgress.value = { stage: 'connecting', percent: 2, message: '正在连接模型服务', model: props.model?.model, reasoningEffort: props.model?.reasoningEffort }
   startElapsedTimer()
   try {
     const result = await api.analyzePrd(importedPrd.value.id, useReview.value, {
-      model: selectedModel.value,
       onProgress: (progress) => { analysisProgress.value = progress },
     })
     emit('analyzed', result)
@@ -173,31 +169,15 @@ onBeforeUnmount(stopElapsedTimer)
           </div>
 
           <div class="analysis-pipeline">
-            <div class="pipeline-node active"><span>1</span><div><strong>需求拆解</strong><small>{{ selectedModel || model?.model }}</small></div></div>
+            <div class="pipeline-node active"><span>1</span><div><strong>需求拆解</strong><small>{{ model?.model }}</small></div></div>
             <div class="pipeline-line"></div>
-            <div class="pipeline-node" :class="{ active: useReview }"><span>2</span><div><strong>方案复核</strong><small>{{ useReview ? (selectedModel || model?.reviewModel) : '已关闭' }}</small></div></div>
+            <div class="pipeline-node" :class="{ active: useReview }"><span>2</span><div><strong>方案复核</strong><small>{{ useReview ? model?.model : '已关闭' }}</small></div></div>
             <div class="pipeline-line"></div>
             <div class="pipeline-node active"><span>3</span><div><strong>知识沉淀</strong><small>本地知识库</small></div></div>
           </div>
 
-          <div class="model-picker-block">
-            <label class="field-label">分析模型</label>
-            <div class="model-segment" aria-label="分析模型">
-              <button
-                v-for="option in availableModels"
-                :key="option.id"
-                :class="{ active: selectedModel === option.id }"
-                :disabled="analyzing"
-                @click="selectedModel = option.id"
-              >
-                <strong>{{ option.label }}</strong>
-                <small>{{ option.description }}</small>
-              </button>
-            </div>
-          </div>
-
           <label class="switch-row">
-            <div><Bot :size="18" /><span><strong>启用双模型复核</strong><small>检查任务遗漏、负载与依赖闭环</small></span></div>
+            <div><Bot :size="18" /><span><strong>启用方案复核</strong><small>检查任务遗漏、负载与依赖闭环</small></span></div>
             <input v-model="useReview" type="checkbox" :disabled="analyzing" /><span class="switch-control"></span>
           </label>
 
@@ -215,7 +195,7 @@ onBeforeUnmount(stopElapsedTimer)
 
         <footer class="modal-footer">
           <button class="text-action" :disabled="analyzing" @click="resetImportedPrd">重新选择</button>
-          <div><button class="secondary-button" :disabled="analyzing" @click="requestClose">稍后分析</button><button class="primary-button" :disabled="analyzing || !model?.configured || !selectedModel" @click="analyze"><LoaderCircle v-if="analyzing" class="spin" :size="17" /><Sparkles v-else :size="17" />{{ analyzing ? `${analysisProgress?.percent || 0}% 分析中` : '生成任务分配' }}</button></div>
+          <div><button class="secondary-button" :disabled="analyzing" @click="requestClose">稍后分析</button><button class="primary-button" :disabled="analyzing || !model?.configured" @click="analyze"><LoaderCircle v-if="analyzing" class="spin" :size="17" /><Sparkles v-else :size="17" />{{ analyzing ? `${analysisProgress?.percent || 0}% 分析中` : '生成任务分配' }}</button></div>
         </footer>
       </template>
     </section>

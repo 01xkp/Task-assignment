@@ -5,7 +5,6 @@ import { Bot, Boxes, FileCheck2, FileText, Link2, MonitorSmartphone, Plus, Searc
 const props = defineProps({ workspace: { type: Object, required: true }, analyzingPrdId: { type: String, default: '' } })
 const emit = defineEmits(['import', 'analyze', 'delete'])
 const query = ref('')
-const selectedModel = ref(props.workspace.model.availableModels?.[0]?.id || props.workspace.model.model)
 
 const filteredPrds = computed(() => props.workspace.prds.filter((prd) => !query.value || `${prd.title} ${prd.sourceLabel}`.toLowerCase().includes(query.value.toLowerCase())))
 
@@ -23,9 +22,6 @@ function sourceIcon(type) {
         <p>结合 Agino 工程模块与五端影响面生成 Flutter 开发任务。</p>
       </div>
       <div class="prd-heading-actions">
-        <select v-model="selectedModel" class="filter-select" aria-label="重新分析模型" :disabled="Boolean(analyzingPrdId)">
-          <option v-for="model in workspace.model.availableModels" :key="model.id" :value="model.id">{{ model.label }} · {{ model.description }}</option>
-        </select>
         <button class="primary-button" @click="emit('import')"><Plus :size="17" /> 导入 PRD</button>
       </div>
     </section>
@@ -35,7 +31,7 @@ function sourceIcon(type) {
       <div><Link2 :size="21" /><span><strong>在线地址</strong><small>网页 · 文档直链</small></span></div>
       <div><Boxes :size="21" /><span><strong>工程模块</strong><small>{{ workspace.project.moduleCount }} 个代码模块</small></span></div>
       <div><MonitorSmartphone :size="21" /><span><strong>全平台分析</strong><small>{{ workspace.project.platforms.join(' · ') }}</small></span></div>
-      <div><Bot :size="21" /><span><strong>双模型复核</strong><small>{{ selectedModel }} · {{ workspace.model.reasoningEffort }}</small></span></div>
+      <div><Bot :size="21" /><span><strong>方案复核</strong><small>{{ workspace.model.model }} · {{ workspace.model.reasoningEffort }}</small></span></div>
     </section>
 
     <section class="document-panel">
@@ -60,7 +56,7 @@ function sourceIcon(type) {
             <span class="analysis-state" :class="{ completed: prd.analysisStatus === 'completed' }">{{ prd.analysisStatus === 'completed' ? '已分析' : '待分析' }}</span>
             <strong>{{ prd.taskCount || 0 }}<small> 个任务</small></strong>
           </div>
-          <button class="secondary-button document-action" :disabled="Boolean(analyzingPrdId)" @click="emit('analyze', { prd, model: selectedModel })">
+          <button class="secondary-button document-action" :disabled="Boolean(analyzingPrdId)" @click="emit('analyze', prd)">
             <Bot :size="16" />{{ analyzingPrdId === prd.id ? '分析中' : '重新分析' }}
           </button>
           <button class="icon-button document-delete" title="删除 PRD" :disabled="Boolean(analyzingPrdId)" @click="emit('delete', prd)"><Trash2 :size="18" /></button>

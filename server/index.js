@@ -2,7 +2,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
 import multer from 'multer'
-import { config, publicModelConfig, resolveAnalysisModel } from './config.js'
+import { config, publicModelConfig } from './config.js'
 import { developers, newId, publicState, readState, updateState } from './storage.js'
 import { fetchOnlineDocument, parseUploadedFile } from './documents.js'
 import { retrieveKnowledge } from './knowledge.js'
@@ -13,6 +13,7 @@ const app = express()
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
+  defParamCharset: 'utf8',
 })
 const activePrdAnalyses = new Set()
 
@@ -79,24 +80,22 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}) {
       throw error
     }
 
-    const selectedModel = resolveAnalysisModel(options.model, config.model)
-    const selectedReviewModel = options.model ? selectedModel : config.reviewModel
+    const configuredModel = config.model
+    const configuredReviewModel = config.model
     const reasoningEffort = config.reasoningEffort
-    onProgress({ stage: 'context', percent: 6, message: '正在读取工程模块、团队负载和历史调整知识', model: selectedModel, reasoningEffort })
+    onProgress({ stage: 'context', percent: 6, message: '正在读取工程模块、团队负载和历史调整知识', model: configuredModel, reasoningEffort })
     const relatedKnowledge = retrieveKnowledge(state.knowledge, `${prd.title} ${prd.content}`, 12)
-    onProgress({ stage: 'context-ready', percent: 10, message: `分析上下文已准备，共匹配 ${relatedKnowledge.length} 条历史知识`, model: selectedModel })
+    onProgress({ stage: 'context-ready', percent: 10, message: `分析上下文已准备，共匹配 ${relatedKnowledge.length} 条历史知识`, model: configuredModel })
 
     const result = await analyzePrd({
       prd,
       knowledge: relatedKnowledge,
       workloads: workloads(state),
       useReview: options.review !== false,
-      model: selectedModel,
-      reviewModel: selectedReviewModel,
       reasoningEffort,
       onProgress,
     })
-    onProgress({ stage: 'saving', percent: 96, message: '正在保存任务分配和分析记录', model: selectedModel })
+    onProgress({ stage: 'saving', percent: 96, message: '正在保存任务分配和分析记录', model: configuredModel })
 
     const createdAt = new Date().toISOString()
     const tasks = result.tasks.map((task, index) => ({
@@ -112,8 +111,8 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}) {
     const durationMs = Date.now() - startedAt
     const draftTrace = result.modelTrace?.draft || {}
     const reviewTrace = result.modelTrace?.review || {}
-    const actualModel = draftTrace.responseModel || selectedModel
-    const actualReviewModel = reviewTrace.responseModel || selectedReviewModel
+    const actualModel = draftTrace.responseModel || configuredModel
+    const actualReviewModel = reviewTrace.responseModel || configuredReviewModel
     await updateState((draft) => {
       draft.tasks = draft.tasks.filter((task) => task.prdId !== prd.id || task.status !== '待开始')
       draft.tasks.unshift(...tasks)
@@ -123,10 +122,10 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}) {
       storedPrd.analysisStatus = 'completed'
       storedPrd.taskCount = tasks.length
       storedPrd.summary = result.summary
-      storedPrd.analysisRequestedModel = selectedModel
+      storedPrd.analysisRequestedModel = configuredModel
       storedPrd.analysisModel = actualModel
       storedPrd.analysisModelVerified = Boolean(draftTrace.responseModel)
-      storedPrd.reviewRequestedModel = selectedReviewModel
+      storedPrd.reviewRequestedModel = configuredReviewModel
       storedPrd.reviewModel = actualReviewModel
       storedPrd.reviewModelVerified = Boolean(reviewTrace.responseModel)
       storedPrd.analysisReasoningEffort = reasoningEffort
@@ -136,7 +135,7 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}) {
         id: newId('act'),
         type: 'analysis',
         title: `已分析 ${prd.title}`,
-        detail: `请求 ${selectedModel}，网关${draftTrace.responseModel ? `返回 ${draftTrace.responseModel}` : '未返回模型标识'}；${reasoningEffort} 推理生成 ${tasks.length} 个任务${result.reviewed ? `，复核返回 ${actualReviewModel}` : ''}；拆分 ${Math.round((draftTrace.durationMs || 0) / 1000)} 秒，复核 ${Math.round((reviewTrace.durationMs || 0) / 1000)} 秒，总计 ${Math.max(1, Math.round(durationMs / 1000))} 秒`,
+        detail: `请求 ${configuredModel}，网关${draftTrace.responseModel ? `返回 ${draftTrace.responseModel}` : '未返回模型标识'}；${reasoningEffort} 推理生成 ${tasks.length} 个任务${result.reviewed ? `，复核返回 ${actualReviewModel}` : ''}；拆分 ${Math.round((draftTrace.durationMs || 0) / 1000)} 秒，复核 ${Math.round((reviewTrace.durationMs || 0) / 1000)} 秒，总计 ${Math.max(1, Math.round(durationMs / 1000))} 秒`,
         createdAt,
       })
     })
@@ -147,7 +146,7 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}) {
       reviewed: result.reviewed,
       reviewWarning: result.reviewWarning,
       model: actualModel,
-      requestedModel: selectedModel,
+      requestedModel: configuredModel,
       reasoningEffort,
       modelTrace: result.modelTrace,
       durationMs,
@@ -253,7 +252,7 @@ app.post('/api/prds/:id/analyze', async (request, response) => {
   response.socket?.setTimeout(0)
 
   const startedAt = Date.now()
-  let lastProgress = { stage: 'connecting', percent: 2, message: '正在连接模型服务', model: request.body.model || config.model, reasoningEffort: config.reasoningEffort }
+  let lastProgress = { stage: 'connecting', percent: 2, message: '正在连接模型服务', model: config.model, reasoningEffort: config.reasoningEffort }
   const reportProgress = (progress) => {
     lastProgress = { ...lastProgress, ...progress }
     writeSse(response, 'progress', { ...lastProgress, elapsedSeconds: Math.floor((Date.now() - startedAt) / 1000) })

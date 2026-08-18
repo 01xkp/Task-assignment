@@ -227,15 +227,14 @@ npm start
 | --- | --- | --- |
 | `OPENAI_API_KEY` | 空 | 必填，只保存在 `.env.local` |
 | `OPENAI_BASE_URL` | `https://api.openai.com` | OpenAI 兼容网关根地址，可带或不带 `/v1` |
-| `OPENAI_MODEL` | `gpt-5.6-sol` | 默认任务拆分模型 |
-| `OPENAI_REVIEW_MODEL` | 同主模型 | 未在页面指定模型时使用的复核模型 |
+| `OPENAI_MODEL` | `gpt-5.6-sol` | 任务拆分与方案复核共用的模型 |
 | `OPENAI_REASONING_EFFORT` | `xhigh` | 服务端统一推理强度，页面不提供按次选择 |
 | `OPENAI_DISABLE_RESPONSE_STORAGE` | `true` | 为 `true` 时发送 `store: false` |
-| `OPENAI_REQUEST_TIMEOUT_MS` | `360000` | 单次模型请求超时；双模型流程包含两次串行请求 |
+| `OPENAI_REQUEST_TIMEOUT_MS` | `360000` | 单次模型请求超时；启用方案复核时包含两次串行请求 |
 | `PORT` | `5174` | Express API 和生产前端端口 |
 | `DEVFLOW_HOST` | `0.0.0.0` | Express 监听地址；局域网访问需要保持此值 |
 
-修改 `.env.local` 后必须重启 API。页面上的 Sol、Terra、Luna 只改变分析模型，不会改变 `OPENAI_REASONING_EFFORT`。
+修改 `.env.local` 后必须重启 API。页面不提供模型切换，任务拆分和方案复核始终使用 `OPENAI_MODEL`；`OPENAI_REASONING_EFFORT` 也由服务端统一控制。
 
 如果修改 `PORT`，还要同步修改 `vite.config.js` 中 `/api` 的代理目标，并调整防火墙规则和访问地址。
 
@@ -262,18 +261,18 @@ Copy-Item data\workspace.json data\workspace.backup.json
 
 ## 9. 模型耗时说明
 
-完整分析由任务拆分和可选复核组成，两次模型请求按顺序执行。`xhigh` 推理、大型 PRD、较多任务、网关排队和 JSON Schema 降级重试都会增加总耗时。`OPENAI_REQUEST_TIMEOUT_MS` 是单次请求超时，不是整个双模型流程的总超时。
+完整分析由任务拆分和可选方案复核组成；两次请求都使用 `OPENAI_MODEL`，并按顺序执行。较高推理强度、大型 PRD、较多任务、网关排队和 JSON Schema 降级重试都会增加总耗时。`OPENAI_REQUEST_TIMEOUT_MS` 是单次请求超时，不是整个分析流程的总超时。
 
 页面进度含义：
 
-- 长时间停在“任务拆分”：主模型仍在推理、排队或尚未返回流式文本。
+- 长时间停在“任务拆分”：环境配置的模型仍在推理、排队或尚未返回流式文本。
 - 进入“方案复核”后变慢：首轮已完成，耗时发生在第二次请求。
 - 每 10 秒有心跳但输出字符不增长：浏览器与本地 API 正常，正在等待上游网关。
 
 缩短分析时间的顺序：
 
-1. 页面选择 Terra 或 Luna。
-2. 导入后关闭“双模型复核”。
+1. 在 `.env.local` 配置响应更快的 `OPENAI_MODEL` 并重启 API。
+2. 导入后关闭“方案复核”。
 3. 在 `.env.local` 调低 `OPENAI_REASONING_EFFORT` 并重启 API。
 4. 精简 PRD 中与客户端任务无关的长附录。
 
@@ -305,11 +304,11 @@ Get-NetTCPConnection -State Listen -LocalPort 5173,5174 |
 
 ### 504 或模型超时
 
-提高 `OPENAI_REQUEST_TIMEOUT_MS` 只会延长等待，不会提升模型速度。优先选择更快模型、关闭复核或降低服务端统一推理强度。
+提高 `OPENAI_REQUEST_TIMEOUT_MS` 只会延长等待，不会提升模型速度。优先修改 `OPENAI_MODEL`、关闭方案复核或降低服务端统一推理强度。
 
-### 模型选择看似未生效
+### 配置模型与网关返回不一致
 
-分析结果会保存“请求模型”和“网关实际返回模型”。PRD 列表中的“网关已验证”来自 Responses API 返回的 `model` 字段；二者不同时，应检查兼容网关是否进行了模型别名或路由转换。
+分析结果会保存 `OPENAI_MODEL` 请求值和网关实际返回模型。PRD 列表中的“网关已验证”来自 Responses API 返回的 `model` 字段；二者不同时，应检查兼容网关是否进行了模型别名或路由转换。
 
 ### 知识删除失败后其他写操作报相同错误
 
