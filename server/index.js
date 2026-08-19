@@ -62,7 +62,7 @@ function writeSse(response, event, payload) {
   response.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`)
 }
 
-async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}) {
+async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}, signal) {
   if (activePrdAnalyses.has(prdId)) {
     const error = new Error('该 PRD 正在分析中，请等待当前分析完成')
     error.code = 'ANALYSIS_IN_PROGRESS'
@@ -94,6 +94,7 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}) {
       useReview: options.review !== false,
       reasoningEffort,
       onProgress,
+      signal,
     })
     onProgress({ stage: 'saving', percent: 96, message: '正在保存任务分配和分析记录', model: configuredModel })
 
@@ -252,6 +253,14 @@ app.post('/api/prds/:id/analyze', async (request, response) => {
   response.socket?.setTimeout(0)
 
   const startedAt = Date.now()
+  const controller = new AbortController()
+  const stageCount = request.body.review === false ? 1 : 2
+  const deadline = setTimeout(() => controller.abort(new DOMException('分析请求超时', 'TimeoutError')), config.modelRequestTimeoutMs * stageCount + 30000)
+  const stopWhenClientDisconnects = () => {
+    if (!response.writableEnded) controller.abort(new DOMException('浏览器已断开分析连接', 'AbortError'))
+  }
+  request.once('aborted', stopWhenClientDisconnects)
+  response.once('close', stopWhenClientDisconnects)
   let lastProgress = { stage: 'connecting', percent: 2, message: '正在连接模型服务', model: config.model, reasoningEffort: config.reasoningEffort }
   const reportProgress = (progress) => {
     lastProgress = { ...lastProgress, ...progress }
@@ -263,12 +272,15 @@ app.post('/api/prds/:id/analyze', async (request, response) => {
   }, 10000)
 
   try {
-    const result = await runPrdAnalysis(request.params.id, request.body, reportProgress)
+    const result = await runPrdAnalysis(request.params.id, request.body, reportProgress, controller.signal)
     writeSse(response, 'result', result)
   } catch (error) {
     writeSse(response, 'error', { error: error.message || '请求处理失败', code: error.code || 'REQUEST_FAILED' })
   } finally {
     clearInterval(heartbeat)
+    clearTimeout(deadline)
+    request.off('aborted', stopWhenClientDisconnects)
+    response.off('close', stopWhenClientDisconnects)
     response.end()
   }
 })

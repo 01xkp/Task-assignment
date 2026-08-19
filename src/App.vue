@@ -138,6 +138,7 @@ async function analyzeExisting(prd) {
     notify(`正在分析「${prd.title}」`, 'progress')
     const result = await api.analyzePrd(prd.id, true, {
       onProgress: (progress) => { existingAnalysisProgress.value = progress },
+      requestTimeoutSeconds: workspace.value.model.requestTimeoutSeconds,
     })
     await handleAnalyzed(result)
   } catch (error) {

@@ -53,6 +53,22 @@ async function readAnalysisStream(response, onProgress) {
   return result
 }
 
+export function analysisTimeoutMs(requestTimeoutSeconds = 360, review = true) {
+  const stageTimeoutSeconds = Math.max(30, Number(requestTimeoutSeconds) || 360)
+  const stageCount = review ? 2 : 1
+  return (stageTimeoutSeconds * stageCount + 30) * 1000
+}
+
+function analysisStageTimeoutMs(requestTimeoutSeconds) {
+  return analysisTimeoutMs(requestTimeoutSeconds, false)
+}
+
+function analysisTimeoutError(timeoutMs) {
+  const error = new Error(`分析超过 ${Math.ceil(timeoutMs / 60000)} 分钟未完成，已停止等待。请检查模型服务后重试。`)
+  error.code = 'ANALYSIS_TIMEOUT'
+  return error
+}
+
 export const api = {
   state: () => request('/api/state'),
   uploadPrd(file) {
@@ -74,19 +90,43 @@ export const api = {
       body: JSON.stringify({ title, content }),
     })
   },
-  async analyzePrd(id, review = true, { onProgress } = {}) {
-    const response = await fetch(`/api/prds/${id}/analyze`, {
-      method: 'POST',
-      headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
-      body: JSON.stringify({ review }),
-    })
-    if (!response.ok) {
-      const data = await response.json().catch(() => ({}))
-      const error = new Error(data.error || '模型分析请求失败')
-      error.code = data.code
-      throw error
+  async analyzePrd(id, review = true, { onProgress, requestTimeoutSeconds, timeoutMs } = {}) {
+    const effectiveTimeoutMs = Math.max(1, Number(timeoutMs) || analysisStageTimeoutMs(requestTimeoutSeconds))
+    const controller = new AbortController()
+    let timeout
+    const scheduleDeadline = () => {
+      globalThis.clearTimeout(timeout)
+      timeout = globalThis.setTimeout(() => controller.abort(analysisTimeoutError(effectiveTimeoutMs)), effectiveTimeoutMs)
     }
-    return readAnalysisStream(response, onProgress)
+    scheduleDeadline()
+    let reviewDeadlineStarted = false
+    const reportProgress = (progress) => {
+      if (review && !reviewDeadlineStarted && progress.stage === 'review') {
+        reviewDeadlineStarted = true
+        scheduleDeadline()
+      }
+      onProgress?.(progress)
+    }
+    try {
+      const response = await fetch(`/api/prds/${id}/analyze`, {
+        method: 'POST',
+        headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
+        body: JSON.stringify({ review }),
+        signal: controller.signal,
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        const error = new Error(data.error || '模型分析请求失败')
+        error.code = data.code
+        throw error
+      }
+      return await readAnalysisStream(response, reportProgress)
+    } catch (error) {
+      if (controller.signal.aborted && controller.signal.reason?.code === 'ANALYSIS_TIMEOUT') throw controller.signal.reason
+      throw error
+    } finally {
+      globalThis.clearTimeout(timeout)
+    }
   },
   deletePrd(id) {
     return request(`/api/prds/${id}`, { method: 'DELETE' })

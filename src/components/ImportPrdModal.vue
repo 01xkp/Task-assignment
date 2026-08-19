@@ -94,6 +94,7 @@ async function analyze() {
   try {
     const result = await api.analyzePrd(importedPrd.value.id, useReview.value, {
       onProgress: (progress) => { analysisProgress.value = progress },
+      requestTimeoutSeconds: props.model?.requestTimeoutSeconds,
     })
     emit('analyzed', result)
   } catch (error) {

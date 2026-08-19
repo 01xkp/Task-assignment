@@ -116,7 +116,18 @@ async function readResponsePayload(response, onStreamProgress) {
   return completedResponse || { output_text: outputText }
 }
 
-async function requestModel({ model, system, user, schema, schemaName = 'result', reasoningEffort = config.reasoningEffort, onStreamProgress, includeMetadata = false }) {
+function modelTimeoutError() {
+  const error = new Error(`模型在 ${Math.round(config.modelRequestTimeoutMs / 60000)} 分钟内未返回，请检查模型服务或降低推理强度后重试。`)
+  error.code = 'MODEL_TIMEOUT'
+  return error
+}
+
+function normalizeModelRequestError(error, requestSignal) {
+  if (error?.name === 'TimeoutError' || requestSignal?.reason?.name === 'TimeoutError') return modelTimeoutError()
+  return error
+}
+
+async function requestModel({ model, system, user, schema, schemaName = 'result', reasoningEffort = config.reasoningEffort, onStreamProgress, includeMetadata = false, signal }) {
   if (!config.apiKey) {
     const error = new Error('尚未配置 OPENAI_API_KEY')
     error.code = 'MODEL_NOT_CONFIGURED'
@@ -136,10 +147,14 @@ async function requestModel({ model, system, user, schema, schemaName = 'result'
   const body = schema
     ? { ...baseBody, text: { format: { type: 'json_schema', name: schemaName, strict: true, schema } } }
     : baseBody
+  let activeSignal
 
   async function send(payload, maxAttempts = 3) {
     let response
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const timeoutSignal = AbortSignal.timeout(config.modelRequestTimeoutMs)
+      const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal
+      activeSignal = requestSignal
       try {
         response = await fetch(endpoint(), {
           method: 'POST',
@@ -149,15 +164,10 @@ async function requestModel({ model, system, user, schema, schemaName = 'result'
             'content-type': 'application/json',
           },
           body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(config.modelRequestTimeoutMs),
+          signal: requestSignal,
         })
       } catch (error) {
-        if (error.name === 'TimeoutError' || error.name === 'AbortError') {
-          const timeoutError = new Error(`模型在 ${Math.round(config.modelRequestTimeoutMs / 60000)} 分钟内未返回，请更换更快模型或降低推理强度后重试。`)
-          timeoutError.code = 'MODEL_TIMEOUT'
-          throw timeoutError
-        }
-        throw error
+        throw normalizeModelRequestError(error, requestSignal)
       }
       if (response.ok || ![408, 429, 500, 502, 503, 504].includes(response.status) || attempt === maxAttempts - 1) return response
       await response.arrayBuffer()
@@ -197,7 +207,12 @@ async function requestModel({ model, system, user, schema, schemaName = 'result'
     error.status = response.status
     throw error
   }
-  const payload = await readResponsePayload(response, onStreamProgress)
+  let payload
+  try {
+    payload = await readResponsePayload(response, onStreamProgress)
+  } catch (error) {
+    throw normalizeModelRequestError(error, activeSignal)
+  }
   const data = parseJsonText(extractOutputText(payload))
   if (!includeMetadata) return data
   const usage = payload.usage || {}
@@ -248,7 +263,7 @@ function normalizeAllocation(result) {
   }
 }
 
-export async function analyzePrd({ prd, knowledge, workloads, useReview = true, reasoningEffort = config.reasoningEffort, onProgress }) {
+export async function analyzePrd({ prd, knowledge, workloads, useReview = true, reasoningEffort = config.reasoningEffort, onProgress, signal }) {
   const model = config.model
   const reviewModel = config.model
   const system = `你是 Agino Flutter 多端客户端的资深研发项目经理。只生成 Flutter 客户端开发、平台适配和客户端验收任务，只能分配给给定三位开发者。
@@ -270,6 +285,7 @@ export async function analyzePrd({ prd, knowledge, workloads, useReview = true, 
     schemaName: 'task_allocation',
     reasoningEffort,
     includeMetadata: true,
+    signal,
     onStreamProgress: ({ outputChars }) => onProgress?.({
       stage: 'draft',
       percent: Math.min(50, 18 + Math.floor(outputChars / 400)),
@@ -312,6 +328,7 @@ export async function analyzePrd({ prd, knowledge, workloads, useReview = true, 
       schemaName: 'reviewed_allocation',
       reasoningEffort,
       includeMetadata: true,
+      signal,
       onStreamProgress: ({ outputChars }) => onProgress?.({
         stage: 'review',
         percent: Math.min(90, 66 + Math.floor(outputChars / 500)),
