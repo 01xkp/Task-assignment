@@ -42,3 +42,17 @@ test('restores a legacy Chinese filename in the public PRD list', () => {
 
   assert.equal(state.prds[0].sourceLabel, filename)
 })
+
+test('returns public PRDs ordered by most recent update', () => {
+  const state = publicState({
+    prds: [
+      { id: 'old', title: '旧', content: '旧内容', createdAt: '2026-08-18T00:00:00.000Z', updatedAt: '2026-08-18T00:00:00.000Z' },
+      { id: 'new', title: '新', content: '新内容', createdAt: '2026-08-18T00:00:00.000Z', updatedAt: '2026-08-19T00:00:00.000Z' },
+    ],
+    tasks: [],
+    knowledge: [],
+    activity: [],
+  })
+
+  assert.deepEqual(state.prds.map((prd) => prd.id), ['new', 'old'])
+})

@@ -7,6 +7,7 @@ import { developers, newId, publicState, readState, updateState } from './storag
 import { fetchOnlineDocument, parseUploadedFile } from './documents.js'
 import { retrieveKnowledge } from './knowledge.js'
 import { analyzePrd, suggestReassignment } from './model.js'
+import { reconcilePrdTasks } from './tasks.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -114,14 +115,16 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}, signal
     const reviewTrace = result.modelTrace?.review || {}
     const actualModel = draftTrace.responseModel || configuredModel
     const actualReviewModel = reviewTrace.responseModel || configuredReviewModel
+    let savedTasks = tasks
     await updateState((draft) => {
-      draft.tasks = draft.tasks.filter((task) => task.prdId !== prd.id || task.status !== '待开始')
-      draft.tasks.unshift(...tasks)
       const storedPrd = draft.prds.find((item) => item.id === prd.id)
       if (!storedPrd) throw new Error('PRD 已在分析期间被删除')
+      const reconciliation = reconcilePrdTasks(draft, prd.id, tasks)
+      savedTasks = reconciliation.saved
       storedPrd.analyzedAt = createdAt
+      storedPrd.updatedAt = createdAt
       storedPrd.analysisStatus = 'completed'
-      storedPrd.taskCount = tasks.length
+      storedPrd.taskCount = reconciliation.taskCount
       storedPrd.summary = result.summary
       storedPrd.analysisRequestedModel = configuredModel
       storedPrd.analysisModel = actualModel
@@ -136,13 +139,13 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}, signal
         id: newId('act'),
         type: 'analysis',
         title: `已分析 ${prd.title}`,
-        detail: `请求 ${configuredModel}，网关${draftTrace.responseModel ? `返回 ${draftTrace.responseModel}` : '未返回模型标识'}；${reasoningEffort} 推理生成 ${tasks.length} 个任务${result.reviewed ? `，复核返回 ${actualReviewModel}` : ''}；拆分 ${Math.round((draftTrace.durationMs || 0) / 1000)} 秒，复核 ${Math.round((reviewTrace.durationMs || 0) / 1000)} 秒，总计 ${Math.max(1, Math.round(durationMs / 1000))} 秒`,
+        detail: `请求 ${configuredModel}，网关${draftTrace.responseModel ? `返回 ${draftTrace.responseModel}` : '未返回模型标识'}；${reasoningEffort} 推理生成 ${savedTasks.length} 个任务${result.reviewed ? `，复核返回 ${actualReviewModel}` : ''}；拆分 ${Math.round((draftTrace.durationMs || 0) / 1000)} 秒，复核 ${Math.round((reviewTrace.durationMs || 0) / 1000)} 秒，总计 ${Math.max(1, Math.round(durationMs / 1000))} 秒`,
         createdAt,
       })
     })
     onProgress({ stage: 'complete', percent: 100, message: `分析完成，网关实际返回 ${actualModel}`, model: actualModel, reasoningEffort })
     return {
-      tasks,
+      tasks: savedTasks,
       summary: result.summary,
       reviewed: result.reviewed,
       reviewWarning: result.reviewWarning,
