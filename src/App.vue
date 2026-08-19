@@ -34,6 +34,7 @@ const workspace = ref(null)
 const loading = ref(true)
 const loadError = ref('')
 const showImport = ref(false)
+const importMode = ref('file')
 const showMobileMenu = ref(false)
 const selectedTaskId = ref('')
 const adjustment = ref(null)
@@ -79,6 +80,11 @@ function navigate(view) {
   showMobileMenu.value = false
 }
 
+function openImport(mode = 'file') {
+  importMode.value = mode
+  showImport.value = true
+}
+
 function applyGlobalSearch(event) {
   globalSearch.value = event.target.value
   activeView.value = 'workbench'
@@ -89,9 +95,13 @@ function clearGlobalSearch() {
   activeView.value = 'workbench'
 }
 
-async function handleImported(prd) {
+async function handleImported(result) {
   await loadState()
-  notify(`已导入「${prd.title}」`)
+  const messages = []
+  if (result.imported.length) messages.push(`已导入 ${result.imported.length} 份`)
+  if (result.duplicates.length) messages.push(`跳过 ${result.duplicates.length} 份重复`)
+  if (result.failed.length) messages.push(`${result.failed.length} 份读取失败`)
+  notify(messages.join('，') || '未导入新的 PRD', result.failed.length ? 'error' : 'success')
 }
 
 async function handleAnalyzed(result) {
@@ -101,6 +111,12 @@ async function handleAnalyzed(result) {
   notify(`已生成 ${result.tasks.length} 个任务${result.reviewed ? '并完成复核' : ''}${verification}，耗时 ${Math.round((result.durationMs || 0) / 1000)} 秒`)
   showImport.value = false
   activeView.value = 'workbench'
+}
+
+async function handleBatchAnalyzed(summary) {
+  await loadState()
+  activeView.value = 'workbench'
+  notify(`批量分析完成：${summary.succeeded.length} 份成功，${summary.failed.length} 份失败`, summary.failed.length ? 'error' : 'success')
 }
 
 function openAdjustment(task) {
@@ -254,7 +270,7 @@ onBeforeUnmount(() => window.clearInterval(existingAnalysisTimer))
             <input :value="globalSearch" aria-label="全局搜索" placeholder="搜索任务、模块或成员" @input="applyGlobalSearch" />
             <button v-if="globalSearch" class="global-search-clear" title="清除全局搜索" @click="clearGlobalSearch"><X :size="14" /></button>
           </div>
-          <button class="primary-button" @click="showImport = true">
+          <button class="primary-button" @click="openImport()">
             <Plus :size="17" />
             <span>导入 PRD</span>
           </button>
@@ -280,13 +296,14 @@ onBeforeUnmount(() => window.clearInterval(existingAnalysisTimer))
           :external-query="globalSearch"
           @select-task="selectedTaskId = $event.id"
           @update-status="({ task, status }) => updateStatus(task, status)"
-          @import="showImport = true"
+          @import="openImport()"
+          @analyze-prds="openImport('library')"
         />
         <PrdView
           v-else-if="activeView === 'prds'"
           :workspace="workspace"
           :analyzing-prd-id="analyzingPrdId"
-          @import="showImport = true"
+          @import="openImport()"
           @analyze="analyzeExisting"
           @delete="deleteTarget = $event"
         />
@@ -309,9 +326,11 @@ onBeforeUnmount(() => window.clearInterval(existingAnalysisTimer))
     <ImportPrdModal
       v-if="showImport"
       :model="workspace?.model"
+      :workspace="workspace"
+      :initial-mode="importMode"
       @close="showImport = false"
       @imported="handleImported"
-      @analyzed="handleAnalyzed"
+      @batch-analyzed="handleBatchAnalyzed"
       @error="(message) => notify(message, 'error')"
     />
     <TaskDrawer

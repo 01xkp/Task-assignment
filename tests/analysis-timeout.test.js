@@ -45,3 +45,21 @@ test('starts a separate client deadline when the review stage begins', async (co
   )
   assert.ok(abortedAt - startedAt >= 55)
 })
+
+test('returns batch completion after an intermediate item error', async (context) => {
+  const originalFetch = globalThis.fetch
+  const encoder = new TextEncoder()
+  globalThis.fetch = async () => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode('event: batch-item-error\ndata: {"prdId":"prd-1","error":"timeout"}\n\n'))
+      controller.enqueue(encoder.encode('event: batch-complete\ndata: {"succeeded":[{"id":"prd-2"}],"failed":[{"id":"prd-1"}]}\n\n'))
+      controller.close()
+    },
+  }), { headers: { 'content-type': 'text/event-stream' } })
+  context.after(() => { globalThis.fetch = originalFetch })
+
+  const result = await api.analyzePrds(['prd-1', 'prd-2'], { onEvent: () => {} })
+
+  assert.equal(result.succeeded.length, 1)
+  assert.equal(result.failed.length, 1)
+})

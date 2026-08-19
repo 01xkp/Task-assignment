@@ -19,7 +19,7 @@ import {
 } from 'lucide-vue-next'
 
 const props = defineProps({ workspace: { type: Object, required: true }, externalQuery: { type: String, default: '' } })
-const emit = defineEmits(['select-task', 'update-status', 'import'])
+const emit = defineEmits(['select-task', 'update-status', 'import', 'analyze-prds'])
 
 const search = ref(props.externalQuery)
 const statusFilter = ref('全部')
@@ -100,9 +100,9 @@ function statusClass(status) {
         <strong :class="`metric-value--${metric.tone}`">{{ metric.value }}<small>{{ metric.suffix }}</small></strong>
         <div v-if="metric.label === '本期完成率'" class="micro-progress"><span :style="{ width: `${metric.value}%` }"></span></div>
       </div>
-      <button class="metric-action" @click="emit('import')">
+      <button class="metric-action" @click="emit('analyze-prds')">
         <span class="metric-action-icon"><Plus :size="19" /></span>
-        <span><strong>分析新需求</strong><small>导入 PRD 并生成多端任务</small></span>
+        <span><strong>分析新需求</strong><small>选择已上传 PRD 并生成多端任务</small></span>
         <ArrowUpRight :size="17" />
       </button>
     </section>
