@@ -77,7 +77,7 @@ git diff -- README.md docs/operations.md docs/deployment-kvm-ubuntu.md
 
 Expected: no whitespace errors and no credential values.
 
-- [ ] **Step 3: Commit and push the documentation update**
+- [x] **Step 3: Commit and push the documentation update**
 
 Run:
 
