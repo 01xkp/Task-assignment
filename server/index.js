@@ -4,9 +4,11 @@ import express from 'express'
 import multer from 'multer'
 import { config, publicModelConfig } from './config.js'
 import { developers, newId, publicState, readState, updateState } from './storage.js'
-import { fetchOnlineDocument, parseUploadedFile } from './documents.js'
+import { fetchOnlineDocument, normalizeUploadedFilename, parseUploadedFile } from './documents.js'
 import { retrieveKnowledge } from './knowledge.js'
 import { analyzePrd, suggestReassignment } from './model.js'
+import { runSequentialAnalysis, uniquePrdIds } from './analysis-batch.js'
+import { insertParsedPrds, toPublicPrd } from './prds.js'
 import { reconcilePrdTasks } from './tasks.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -20,8 +22,8 @@ const activePrdAnalyses = new Set()
 
 app.use(express.json({ limit: '2mb' }))
 
-function receivePrdFile(request, response, next) {
-  upload.single('file')(request, response, (error) => {
+function receivePrdFiles(request, response, next) {
+  upload.fields([{ name: 'files', maxCount: 20 }, { name: 'file', maxCount: 1 }])(request, response, (error) => {
     if (!error) return next()
     const uploadError = new Error(error.code === 'LIMIT_FILE_SIZE'
       ? 'PRD 文档不能超过 10MB'
@@ -29,6 +31,27 @@ function receivePrdFile(request, response, next) {
     uploadError.code = error.code || 'UPLOAD_FAILED'
     handleError(uploadError, response)
   })
+}
+
+function uploadedFiles(request) {
+  return [...(request.files?.files || []), ...(request.files?.file || [])]
+}
+
+function duplicatePrdError(duplicate) {
+  const error = new Error(`已存在相同内容的 PRD：「${duplicate.existingTitle}」`)
+  error.code = 'PRD_DUPLICATE'
+  return error
+}
+
+async function storeParsedPrds(parsedPrds) {
+  let result
+  await updateState((state) => {
+    result = insertParsedPrds(state, parsedPrds, {
+      createId: () => newId('prd'),
+      now: () => new Date().toISOString(),
+    })
+  })
+  return result
 }
 
 function workloads(state, excludedTaskId = '') {
@@ -50,6 +73,8 @@ function handleError(error, response) {
   const status = {
     ANALYSIS_IN_PROGRESS: 409,
     KNOWLEDGE_NOT_FOUND: 404,
+    PRD_DUPLICATE: 409,
+    PRD_NOT_FOUND: 404,
     MODEL_NOT_CONFIGURED: 503,
     MODEL_TIMEOUT: 504,
     MODEL_RATE_LIMITED: 429,
@@ -175,13 +200,29 @@ app.get('/api/prds/:id', async (request, response) => {
   response.json(prd)
 })
 
-app.post('/api/prds/upload', receivePrdFile, async (request, response) => {
+app.post('/api/prds/upload', receivePrdFiles, async (request, response) => {
   try {
-    if (!request.file) throw new Error('请选择要上传的 PRD 文档')
-    const parsed = await parseUploadedFile(request.file)
-    const prd = { id: newId('prd'), ...parsed, sourceType: 'file', createdAt: new Date().toISOString(), analysisStatus: 'ready', taskCount: 0 }
-    await updateState((state) => { state.prds.unshift(prd) })
-    response.status(201).json({ ...prd, content: undefined })
+    const files = uploadedFiles(request)
+    if (!files.length) throw new Error('请选择要上传的 PRD 文档')
+    const outcomes = await Promise.all(files.map(async (file) => {
+      try {
+        return { parsed: { ...await parseUploadedFile(file), sourceType: 'file' } }
+      } catch (error) {
+        return {
+          failed: {
+            sourceLabel: normalizeUploadedFilename(file.originalname) || '未命名文件',
+            error: error.message || '文档读取失败',
+            code: error.code || 'DOCUMENT_PARSE_FAILED',
+          },
+        }
+      }
+    }))
+    const stored = await storeParsedPrds(outcomes.flatMap((outcome) => outcome.parsed ? [outcome.parsed] : []))
+    response.status(stored.imported.length ? 201 : 200).json({
+      imported: stored.imported.map(toPublicPrd),
+      duplicates: stored.duplicates,
+      failed: outcomes.flatMap((outcome) => outcome.failed ? [outcome.failed] : []),
+    })
   } catch (error) {
     handleError(error, response)
   }
@@ -190,9 +231,9 @@ app.post('/api/prds/upload', receivePrdFile, async (request, response) => {
 app.post('/api/prds/url', async (request, response) => {
   try {
     const parsed = await fetchOnlineDocument(request.body.url)
-    const prd = { id: newId('prd'), ...parsed, sourceType: 'url', createdAt: new Date().toISOString(), analysisStatus: 'ready', taskCount: 0 }
-    await updateState((state) => { state.prds.unshift(prd) })
-    response.status(201).json({ ...prd, content: undefined })
+    const stored = await storeParsedPrds([{ ...parsed, sourceType: 'url' }])
+    if (!stored.imported.length) throw duplicatePrdError(stored.duplicates[0])
+    response.status(201).json(toPublicPrd(stored.imported[0]))
   } catch (error) {
     handleError(error, response)
   }
@@ -202,9 +243,14 @@ app.post('/api/prds/text', async (request, response) => {
   try {
     const content = String(request.body.content || '').trim()
     if (content.length < 20) throw new Error('PRD 正文至少需要 20 个字符')
-    const prd = { id: newId('prd'), title: String(request.body.title || '粘贴的 PRD').slice(0, 80), content, sourceType: 'text', sourceLabel: '手动粘贴', createdAt: new Date().toISOString(), analysisStatus: 'ready', taskCount: 0 }
-    await updateState((state) => { state.prds.unshift(prd) })
-    response.status(201).json({ ...prd, content: undefined })
+    const stored = await storeParsedPrds([{
+      title: String(request.body.title || '粘贴的 PRD').slice(0, 80),
+      content,
+      sourceType: 'text',
+      sourceLabel: '手动粘贴',
+    }])
+    if (!stored.imported.length) throw duplicatePrdError(stored.duplicates[0])
+    response.status(201).json(toPublicPrd(stored.imported[0]))
   } catch (error) {
     handleError(error, response)
   }
@@ -286,6 +332,73 @@ app.post('/api/prds/:id/analyze', async (request, response) => {
     response.off('close', stopWhenClientDisconnects)
     response.end()
   }
+})
+
+app.post('/api/prds/analyze-batch', async (request, response) => {
+  const prdIds = uniquePrdIds(request.body.prdIds)
+  if (!prdIds.length) return handleError(new Error('请至少选择一份 PRD'), response)
+
+  response.status(200)
+  response.set({
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'X-Accel-Buffering': 'no',
+  })
+  response.flushHeaders()
+  response.socket?.setTimeout(0)
+
+  let activeController = null
+  let disconnected = false
+  const abortOnDisconnect = () => {
+    disconnected = true
+    activeController?.abort(new DOMException('浏览器已断开分析连接', 'AbortError'))
+  }
+  request.once('aborted', abortOnDisconnect)
+  response.once('close', abortOnDisconnect)
+
+  writeSse(response, 'batch-start', { total: prdIds.length, prdIds })
+  const batch = await runSequentialAnalysis(prdIds, async (prdId) => {
+    if (disconnected) {
+      const error = new Error('浏览器已断开分析连接')
+      error.code = 'REQUEST_ABORTED'
+      throw error
+    }
+
+    const index = prdIds.indexOf(prdId)
+    const state = await readState()
+    const prd = state.prds.find((item) => item.id === prdId)
+    const item = { index, total: prdIds.length, prdId, title: prd?.title || prdId }
+    writeSse(response, 'batch-item-start', item)
+
+    activeController = new AbortController()
+    const stageCount = request.body.review === false ? 1 : 2
+    const deadline = setTimeout(() => activeController.abort(new DOMException('分析请求超时', 'TimeoutError')), config.modelRequestTimeoutMs * stageCount + 30000)
+    const heartbeat = setInterval(() => {
+      writeSse(response, 'batch-progress', { ...item, progress: { stage: 'waiting', heartbeat: true } })
+    }, 10000)
+    try {
+      const result = await runPrdAnalysis(prdId, request.body, (progress) => {
+        writeSse(response, 'batch-progress', { ...item, progress })
+      }, activeController.signal)
+      writeSse(response, 'batch-item-result', { ...item, result })
+      return result
+    } catch (error) {
+      writeSse(response, 'batch-item-error', { ...item, error: error.message || '分析失败', code: error.code || 'REQUEST_FAILED' })
+      throw error
+    } finally {
+      clearTimeout(deadline)
+      clearInterval(heartbeat)
+      activeController = null
+    }
+  })
+
+  if (!disconnected) {
+    writeSse(response, 'batch-complete', batch)
+    response.end()
+  }
+  request.off('aborted', abortOnDisconnect)
+  response.off('close', abortOnDisconnect)
 })
 
 app.delete('/api/knowledge/:id', async (request, response) => {

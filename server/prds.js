@@ -45,3 +45,8 @@ export function insertParsedPrds(state, parsedPrds, { createId, now }) {
   state.prds.unshift(...imported)
   return { imported, duplicates }
 }
+
+export function toPublicPrd(prd) {
+  const { content, ...publicPrd } = prd
+  return publicPrd
+}

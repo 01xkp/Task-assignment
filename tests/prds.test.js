@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { fingerprintPrdContent, insertParsedPrds, sortPrdsNewestFirst } from '../server/prds.js'
+import { fingerprintPrdContent, insertParsedPrds, sortPrdsNewestFirst, toPublicPrd } from '../server/prds.js'
 
 test('hashes formatting-only content differences identically', () => {
   assert.equal(
@@ -28,4 +28,11 @@ test('allows updated content with the same filename and orders the update first'
   insertParsedPrds(state, [{ title: '登录', content: '版本二', sourceLabel: '登录.md', sourceType: 'file' }], { createId: () => 'prd-2', now: () => '2026-08-19T00:00:00.000Z' })
 
   assert.deepEqual(sortPrdsNewestFirst(state.prds).map((prd) => prd.id), ['prd-2', 'prd-1'])
+})
+
+test('removes PRD content from the upload response item', () => {
+  assert.deepEqual(
+    toPublicPrd({ id: 'prd-1', title: '登录', content: '不应返回', contentFingerprint: 'hash' }),
+    { id: 'prd-1', title: '登录', contentFingerprint: 'hash' },
+  )
 })
