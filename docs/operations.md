@@ -205,6 +205,8 @@ Remove-NetFirewallRule -DisplayName "DevFlow LAN"
 
 ## 6. 生产模式运行
 
+本节说明 Windows 上的本地生产运行。Ubuntu KVM 的生产部署请参阅 [Ubuntu KVM 生产部署](deployment-kvm-ubuntu.md)。
+
 构建并启动：
 
 ```powershell
