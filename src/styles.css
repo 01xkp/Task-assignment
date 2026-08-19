@@ -881,6 +881,76 @@ button:disabled {
   background: #fff8f5;
 }
 
+.grouped-table-wrap { overflow: visible; }
+.prd-task-groups { display: grid; }
+.prd-task-group { border-bottom: 1px solid var(--line); }
+.prd-task-group:last-child { border-bottom: 0; }
+
+.prd-task-group__header,
+.prd-task-category__header {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.prd-task-group__header {
+  min-height: 58px;
+  gap: 10px;
+  padding: 10px 15px;
+}
+
+.prd-task-group__header:hover { background: #f8faf8; }
+.prd-task-group__header > svg { flex: 0 0 auto; color: var(--green); }
+.prd-task-group__identity { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.prd-task-group__identity strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.prd-task-group__identity small { overflow: hidden; margin-top: 4px; color: var(--muted-2); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.prd-task-group__body { padding: 0 10px 10px 31px; }
+.prd-task-group__empty { padding: 14px 12px; color: var(--muted-2); font-size: 12px; }
+.prd-task-category { border-top: 1px solid #edf0ed; }
+
+.prd-task-category__header {
+  min-height: 39px;
+  gap: 7px;
+  padding: 0 9px;
+  color: #425149;
+}
+
+.prd-task-category__header:hover { background: #fafcf9; }
+.prd-task-category__header > svg { flex: 0 0 auto; color: #75847c; }
+.prd-task-category__header strong { font-size: 12px; }
+.prd-task-category__header small { margin-left: 2px; color: var(--muted-2); font-size: 10px; }
+
+.grouped-task-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(180px, 2.9fr) minmax(45px, .7fr) minmax(100px, 1.1fr) minmax(45px, .6fr) minmax(62px, .7fr) minmax(86px, 1fr) 36px;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 0 9px;
+  border-top: 1px solid #edf0ed;
+  color: #44504a;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.grouped-task-row:hover { background: #f8faf8; }
+.grouped-task-row.row--attention { background: #fff8f5; }
+.grouped-task-row--head { min-height: 31px; color: #858f8a; background: #f7f8f6; cursor: default; font-size: 10px; font-weight: 700; }
+.grouped-task-row--head:hover { background: #f7f8f6; }
+.grouped-task-row .assignee-cell { gap: 6px; font-size: 11px; }
+.grouped-task-row .avatar { width: 22px; height: 22px; font-size: 10px; }
+.grouped-task-row .task-title-cell strong { font-size: 12px; }
+.grouped-task-row .task-title-cell small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grouped-task-row .priority-line { height: 25px; }
+.grouped-task-row .row-action { width: 28px; height: 28px; }
+
 .task-title-cell {
   display: flex;
   min-width: 0;
@@ -2574,6 +2644,25 @@ button:disabled {
   .retrieval-flow { display: block; padding: 18px 16px 3px; }
   .retrieval-flow > div { padding: 0 0 20px; }
   .mobile-nav { display: none; }
+  .prd-task-group__header { min-height: 62px; padding: 10px 12px; }
+  .prd-task-group__body { padding: 0 7px 8px 18px; }
+  .prd-task-category__header { min-height: 42px; }
+  .grouped-task-row--head { display: none; }
+  .grouped-task-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px 10px;
+    min-height: 0;
+    padding: 10px;
+  }
+  .grouped-task-row > :first-child { grid-column: 1 / -1; }
+  .grouped-task-row > :nth-child(2),
+  .grouped-task-row > :nth-child(4),
+  .grouped-task-row > :nth-child(6) { grid-column: 1; }
+  .grouped-task-row > :nth-child(3),
+  .grouped-task-row > :nth-child(5),
+  .grouped-task-row > :nth-child(7) { grid-column: 2; justify-self: end; }
+  .grouped-task-row .task-title-cell small { white-space: normal; }
+  .grouped-task-row .status-select { min-width: 91px; }
 }
 
 @media (max-width: 640px) {
@@ -2662,7 +2751,7 @@ button:disabled {
   .modal-card { width: 100%; max-height: 92vh; border-radius: 7px 7px 0 0; }
   .modal-header { padding: 18px 16px 14px; }
   .modal-body { padding: 16px; }
-  .import-tabs { padding: 0 12px; }
+  .import-tabs { grid-template-columns: repeat(2, 1fr); padding: 0 12px; }
   .import-tabs button { font-size: 12px; }
   .modal-footer { align-items: flex-start; flex-direction: column; padding: 11px 16px; }
   .modal-footer > div { width: 100%; }

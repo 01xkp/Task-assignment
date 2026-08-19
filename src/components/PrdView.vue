@@ -46,7 +46,7 @@ function sourceIcon(type) {
             <div><strong>{{ prd.title }}</strong><span v-if="prd.sourceType === 'sample'" class="sample-label">示例</span></div>
             <p>{{ prd.excerpt }}</p>
             <div class="document-meta">
-              <span>{{ prd.sourceLabel }}</span><span>{{ prd.contentLength }} 字</span><span>{{ new Date(prd.createdAt).toLocaleDateString('zh-CN') }}</span>
+              <span>{{ prd.sourceLabel }}</span><span>{{ prd.contentLength }} 字</span><span>更新于 {{ new Date(prd.updatedAt || prd.createdAt).toLocaleDateString('zh-CN') }}</span>
               <span v-if="prd.analysisModelVerified" class="model-verified">网关已验证：{{ prd.analysisModel }}</span>
               <span v-else-if="prd.analysisModel">历史请求：{{ prd.analysisModel }}（未记录网关返回值）</span>
               <span v-if="prd.analysisTrace?.draft">拆分 {{ Math.round(prd.analysisTrace.draft.durationMs / 1000) }}s · 复核 {{ Math.round((prd.analysisTrace.review?.durationMs || 0) / 1000) }}s</span>

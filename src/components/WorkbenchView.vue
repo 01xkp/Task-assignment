@@ -5,6 +5,7 @@ import {
   Bot,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   CircleDot,
   Clock3,
@@ -17,6 +18,7 @@ import {
   Sparkles,
   Users,
 } from 'lucide-vue-next'
+import { groupTasksByPrd } from '../task-groups.js'
 
 const props = defineProps({ workspace: { type: Object, required: true }, externalQuery: { type: String, default: '' } })
 const emit = defineEmits(['select-task', 'update-status', 'import', 'analyze-prds'])
@@ -26,9 +28,19 @@ const statusFilter = ref('全部')
 const assigneeFilter = ref('全部成员')
 const taskView = ref('list')
 const showAllActivity = ref(false)
+const expandedPrdIds = ref(new Set())
+const expandedCategoryKeys = ref(new Set())
+const latestOpenedPrdId = ref('')
 const statusOptions = ['全部', '待开始', '进行中', '评审中', '待重分配', '已完成']
 
 watch(() => props.externalQuery, (value) => { search.value = value })
+watch(() => props.workspace.prds[0]?.id, (prdId) => {
+  if (!prdId || prdId === latestOpenedPrdId.value) return
+  const next = new Set(expandedPrdIds.value)
+  next.add(prdId)
+  expandedPrdIds.value = next
+  latestOpenedPrdId.value = prdId
+}, { immediate: true })
 
 const filteredTasks = computed(() => {
   const query = search.value.trim().toLowerCase()
@@ -39,6 +51,9 @@ const filteredTasks = computed(() => {
     return matchesQuery && matchesStatus && matchesAssignee
   })
 })
+
+const hasActiveFilters = computed(() => Boolean(search.value.trim()) || statusFilter.value !== '全部' || assigneeFilter.value !== '全部成员')
+const groupedTasks = computed(() => groupTasksByPrd(props.workspace.prds, filteredTasks.value, { includeEmpty: !hasActiveFilters.value }))
 
 const metrics = computed(() => {
   const tasks = props.workspace.tasks
@@ -73,6 +88,22 @@ function statusClass(status) {
     '已完成': 'status--done',
     '待重分配': 'status--reassign',
   }[status] || 'status--todo'
+}
+
+function toggleExpanded(setRef, value) {
+  const next = new Set(setRef.value)
+  next.has(value) ? next.delete(value) : next.add(value)
+  setRef.value = next
+}
+
+function categoryKey(prdId, workType) {
+  return `${prdId}:${workType}`
+}
+
+function formatPrdDate(prd) {
+  const value = prd.updatedAt || prd.createdAt
+  if (!value) return '刚刚更新'
+  return new Date(value).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 </script>
 
@@ -142,62 +173,38 @@ function statusClass(status) {
           </div>
         </div>
 
-        <div v-if="taskView === 'list'" class="table-wrap">
-          <table class="task-table">
-            <thead>
-              <tr>
-                <th>任务 / 模块</th>
-                <th>优先级</th>
-                <th>负责人</th>
-                <th>工时</th>
-                <th>截止</th>
-                <th>状态</th>
-                <th><span class="sr-only">操作</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="task in filteredTasks"
-                :key="task.id"
-                :class="{ 'row--attention': task.status === '待重分配' }"
-                @click="emit('select-task', task)"
-              >
-                <td>
-                  <div class="task-title-cell">
-                    <span class="priority-line" :class="`priority-line--${task.priority}`"></span>
-                    <div>
-                      <strong>{{ task.title }}</strong>
-                      <small>{{ task.module }}<template v-if="task.platforms?.length"> · {{ task.platforms.join(' / ') }}</template></small>
+        <div v-if="taskView === 'list'" class="table-wrap grouped-table-wrap">
+          <div v-if="groupedTasks.length" class="prd-task-groups">
+            <section v-for="group in groupedTasks" :key="group.prd.id" class="prd-task-group">
+              <button class="prd-task-group__header" :aria-expanded="expandedPrdIds.has(group.prd.id)" @click="toggleExpanded(expandedPrdIds, group.prd.id)">
+                <component :is="expandedPrdIds.has(group.prd.id) ? ChevronDown : ChevronRight" :size="18" />
+                <span class="prd-task-group__identity"><strong>{{ group.prd.title }}</strong><small>{{ formatPrdDate(group.prd) }} · {{ group.prd.taskCount || 0 }} 个任务</small></span>
+                <span class="analysis-state" :class="{ completed: group.prd.analysisStatus === 'completed' }">{{ group.prd.analysisStatus === 'completed' ? '已分析' : '待分析' }}</span>
+              </button>
+              <div v-if="expandedPrdIds.has(group.prd.id)" class="prd-task-group__body">
+                <div v-if="!group.categories.length" class="prd-task-group__empty">该 PRD 尚未生成开发任务。</div>
+                <section v-for="category in group.categories" :key="category.workType" class="prd-task-category">
+                  <button class="prd-task-category__header" :aria-expanded="expandedCategoryKeys.has(categoryKey(group.prd.id, category.workType))" @click="toggleExpanded(expandedCategoryKeys, categoryKey(group.prd.id, category.workType))">
+                    <component :is="expandedCategoryKeys.has(categoryKey(group.prd.id, category.workType)) ? ChevronDown : ChevronRight" :size="16" />
+                    <strong>{{ category.workType }}</strong><small>{{ category.tasks.length }} 项</small>
+                  </button>
+                  <div v-if="expandedCategoryKeys.has(categoryKey(group.prd.id, category.workType))" class="prd-task-category__tasks">
+                    <div class="grouped-task-row grouped-task-row--head"><span>任务 / 模块</span><span>优先级</span><span>负责人</span><span>工时</span><span>截止</span><span>状态</span><span></span></div>
+                    <div v-for="task in category.tasks" :key="task.id" class="grouped-task-row" :class="{ 'row--attention': task.status === '待重分配' }" @click="emit('select-task', task)">
+                      <div class="task-title-cell"><span class="priority-line" :class="`priority-line--${task.priority}`"></span><div><strong>{{ task.title }}</strong><small>{{ task.module }}<template v-if="task.platforms?.length"> · {{ task.platforms.join(' / ') }}</template></small></div></div>
+                      <span class="priority-text" :class="`priority-text--${task.priority}`">{{ task.priority }}</span>
+                      <div class="assignee-cell"><div class="avatar" :style="{ background: workspace.developers.find((item) => item.name === task.assignee)?.color }">{{ task.assignee?.slice(0, 1) }}</div><span>{{ task.assignee }}</span></div>
+                      <span class="mono-value">{{ task.estimateHours }}h</span>
+                      <span class="date-value">{{ task.dueDate }}</span>
+                      <select class="status-select" :class="statusClass(task.status)" :value="task.status" @click.stop @change="emit('update-status', { task, status: $event.target.value })"><option>待开始</option><option>进行中</option><option>评审中</option><option>已完成</option><option>待重分配</option></select>
+                      <button class="icon-button row-action" title="查看任务" @click.stop="emit('select-task', task)"><MoreHorizontal :size="18" /></button>
                     </div>
                   </div>
-                </td>
-                <td><span class="priority-text" :class="`priority-text--${task.priority}`">{{ task.priority }}</span></td>
-                <td>
-                  <div class="assignee-cell">
-                    <div class="avatar" :style="{ background: workspace.developers.find((item) => item.name === task.assignee)?.color }">{{ task.assignee?.slice(0, 1) }}</div>
-                    <span>{{ task.assignee }}</span>
-                  </div>
-                </td>
-                <td><span class="mono-value">{{ task.estimateHours }}h</span></td>
-                <td><span class="date-value">{{ task.dueDate }}</span></td>
-                <td>
-                  <select
-                    class="status-select"
-                    :class="statusClass(task.status)"
-                    :value="task.status"
-                    @click.stop
-                    @change="emit('update-status', { task, status: $event.target.value })"
-                  >
-                    <option>待开始</option><option>进行中</option><option>评审中</option><option>已完成</option><option>待重分配</option>
-                  </select>
-                </td>
-                <td>
-                  <button class="icon-button row-action" title="查看任务" @click.stop="emit('select-task', task)"><MoreHorizontal :size="18" /></button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <div v-if="!filteredTasks.length" class="empty-table">
+                </section>
+              </div>
+            </section>
+          </div>
+          <div v-else class="empty-table">
             <FileText :size="24" />
             <strong>{{ workspace.tasks.length ? '没有符合条件的任务' : '暂无开发任务' }}</strong>
             <span>{{ workspace.tasks.length ? '当前筛选范围没有结果。' : '等待第一份 PRD 分析结果。' }}</span>
