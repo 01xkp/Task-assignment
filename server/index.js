@@ -7,11 +7,12 @@ import { developers, newId, publicState, readState, updateState } from './storag
 import { fetchOnlineDocument } from './documents.js'
 import { retrieveKnowledge } from './knowledge.js'
 import { analyzePrd, suggestReassignment } from './model.js'
-import { runSequentialAnalysis, uniquePrdIds } from './analysis-batch.js'
+import { runSequentialFeatureAnalysis, uniquePrdIds } from './analysis-batch.js'
 import { mergeAnalysisProgress } from './model-progress.js'
 import { insertParsedPrds, markPrdAllocationFailed, markPrdAllocationStarted, recoverInterruptedPrdAllocations, toPublicPrd } from './prds.js'
 import { parsePrdUpload } from './prd-upload.js'
-import { reconcilePrdTasks } from './tasks.js'
+import { reconcileFeatureTasks, removePrdFromFeatureTasks } from './tasks.js'
+import { applyFeatureIdentity, groupPrdsByFeature, mergeFeaturePrds } from '../shared/feature-modules.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -21,7 +22,7 @@ const upload = multer({
   preservePath: true,
   defParamCharset: 'utf8',
 })
-const activePrdAnalyses = new Set()
+const activeFeatureAnalyses = new Set()
 
 app.use(express.json({ limit: '2mb' }))
 
@@ -97,44 +98,54 @@ function writeSse(response, event, payload) {
   response.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`)
 }
 
-async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}, signal) {
-  if (activePrdAnalyses.has(prdId)) {
-    const error = new Error('该 PRD 正在分析中，请等待当前分析完成')
+function featureGroupForPrd(state, prdId) {
+  const requestedPrd = state.prds.find((item) => item.id === prdId)
+  if (!requestedPrd) {
+    const error = new Error('PRD 不存在')
+    error.code = 'PRD_NOT_FOUND'
+    throw error
+  }
+  const requestedFeature = applyFeatureIdentity(requestedPrd)
+  return groupPrdsByFeature(state.prds).find((group) => group.featureKey === requestedFeature.featureKey)
+}
+
+async function runFeatureAnalysis(prdId, options = {}, onProgress = () => {}, signal) {
+  const initialState = await readState()
+  let featureGroup = featureGroupForPrd(initialState, prdId)
+  if (activeFeatureAnalyses.has(featureGroup.featureKey)) {
+    const error = new Error('该功能模块正在分析中，请等待当前分析完成')
     error.code = 'ANALYSIS_IN_PROGRESS'
     throw error
   }
 
-  activePrdAnalyses.add(prdId)
+  activeFeatureAnalyses.add(featureGroup.featureKey)
   const startedAt = Date.now()
   try {
-    const state = await readState()
-    const prd = state.prds.find((item) => item.id === prdId)
-    if (!prd) {
-      const error = new Error('PRD 不存在')
-      error.code = 'PRD_NOT_FOUND'
-      throw error
-    }
+    const state = initialState
+    const featurePrd = mergeFeaturePrds(featureGroup)
 
     const analysisStartedAt = new Date().toISOString()
     await updateState((draft) => {
-      const storedPrd = draft.prds.find((item) => item.id === prd.id)
-      if (!storedPrd) {
-        const error = new Error('PRD 已在开始分配前被删除')
-        error.code = 'PRD_NOT_FOUND'
-        throw error
+      for (const sourcePrdId of featureGroup.prdIds) {
+        const storedPrd = draft.prds.find((item) => item.id === sourcePrdId)
+        if (!storedPrd) {
+          const error = new Error('PRD 已在开始分配前被删除')
+          error.code = 'PRD_NOT_FOUND'
+          throw error
+        }
+        markPrdAllocationStarted(storedPrd, analysisStartedAt)
       }
-      markPrdAllocationStarted(storedPrd, analysisStartedAt)
     })
 
     const configuredModel = config.model
     const configuredReviewModel = config.model
     const reasoningEffort = config.reasoningEffort
     onProgress({ stage: 'context', percent: 6, message: '正在读取工程模块、团队负载和历史调整知识', model: configuredModel, reasoningEffort })
-    const relatedKnowledge = retrieveKnowledge(state.knowledge, `${prd.title} ${prd.content}`, 12)
+    const relatedKnowledge = retrieveKnowledge(state.knowledge, `${featurePrd.title} ${featurePrd.content}`, 12)
     onProgress({ stage: 'context-ready', percent: 10, message: `分析上下文已准备，共匹配 ${relatedKnowledge.length} 条历史知识`, model: configuredModel })
 
     const result = await analyzePrd({
-      prd,
+      prd: featurePrd,
       knowledge: relatedKnowledge,
       workloads: workloads(state),
       useReview: options.review !== false,
@@ -147,7 +158,6 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}, signal
     const createdAt = new Date().toISOString()
     const tasks = result.tasks.map((task, index) => ({
       id: newId('task'),
-      prdId: prd.id,
       ...task,
       assignee: task.suggestedAssignee,
       status: '待开始',
@@ -162,31 +172,41 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}, signal
     const actualReviewModel = reviewTrace.responseModel || configuredReviewModel
     let savedTasks = tasks
     await updateState((draft) => {
-      const storedPrd = draft.prds.find((item) => item.id === prd.id)
-      if (!storedPrd) throw new Error('PRD 已在分析期间被删除')
-      const reconciliation = reconcilePrdTasks(draft, prd.id, tasks)
+      const reconciliation = reconcileFeatureTasks(draft, {
+        featureKey: featureGroup.featureKey,
+        prdIds: featureGroup.prdIds,
+        candidates: tasks,
+      })
       savedTasks = reconciliation.saved
-      storedPrd.analyzedAt = createdAt
-      storedPrd.analysisFinishedAt = createdAt
-      storedPrd.analysisError = ''
-      storedPrd.updatedAt = createdAt
-      storedPrd.analysisStatus = 'completed'
-      storedPrd.taskCount = reconciliation.taskCount
-      storedPrd.summary = result.summary
-      storedPrd.analysisRequestedModel = configuredModel
-      storedPrd.analysisModel = actualModel
-      storedPrd.analysisModelVerified = Boolean(draftTrace.responseModel)
-      storedPrd.reviewRequestedModel = configuredReviewModel
-      storedPrd.reviewModel = actualReviewModel
-      storedPrd.reviewModelVerified = Boolean(reviewTrace.responseModel)
-      storedPrd.analysisReasoningEffort = reasoningEffort
-      storedPrd.analysisDurationMs = durationMs
-      storedPrd.analysisTrace = result.modelTrace
+      for (const sourcePrdId of featureGroup.prdIds) {
+        const storedPrd = draft.prds.find((item) => item.id === sourcePrdId)
+        if (!storedPrd) throw new Error('PRD 已在分析期间被删除')
+        Object.assign(storedPrd, {
+          featureKey: featureGroup.featureKey,
+          featureName: featureGroup.featureName,
+          analyzedAt: createdAt,
+          analysisFinishedAt: createdAt,
+          analysisError: '',
+          updatedAt: createdAt,
+          analysisStatus: 'completed',
+          taskCount: reconciliation.taskCount,
+          summary: result.summary,
+          analysisRequestedModel: configuredModel,
+          analysisModel: actualModel,
+          analysisModelVerified: Boolean(draftTrace.responseModel),
+          reviewRequestedModel: configuredReviewModel,
+          reviewModel: actualReviewModel,
+          reviewModelVerified: Boolean(reviewTrace.responseModel),
+          analysisReasoningEffort: reasoningEffort,
+          analysisDurationMs: durationMs,
+          analysisTrace: result.modelTrace,
+        })
+      }
       draft.activity.unshift({
         id: newId('act'),
         type: 'analysis',
-        title: `已分析 ${prd.title}`,
-        detail: `请求 ${configuredModel}，网关${draftTrace.responseModel ? `返回 ${draftTrace.responseModel}` : '未返回模型标识'}；${reasoningEffort} 推理生成 ${savedTasks.length} 个任务${result.reviewed ? `，复核返回 ${actualReviewModel}` : ''}；拆分 ${Math.round((draftTrace.durationMs || 0) / 1000)} 秒，复核 ${Math.round((reviewTrace.durationMs || 0) / 1000)} 秒，总计 ${Math.max(1, Math.round(durationMs / 1000))} 秒`,
+        title: `已分析 ${featureGroup.featureName}`,
+        detail: `${featureGroup.prdIds.length} 份来源文档合并分析；请求 ${configuredModel}，网关${draftTrace.responseModel ? `返回 ${draftTrace.responseModel}` : '未返回模型标识'}；${reasoningEffort} 推理生成 ${savedTasks.length} 个任务${result.reviewed ? `，复核返回 ${actualReviewModel}` : ''}；拆分 ${Math.round((draftTrace.durationMs || 0) / 1000)} 秒，复核 ${Math.round((reviewTrace.durationMs || 0) / 1000)} 秒，总计 ${Math.max(1, Math.round(durationMs / 1000))} 秒`,
         createdAt,
       })
     })
@@ -196,6 +216,9 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}, signal
       summary: result.summary,
       reviewed: result.reviewed,
       reviewWarning: result.reviewWarning,
+      featureKey: featureGroup.featureKey,
+      featureName: featureGroup.featureName,
+      prdIds: featureGroup.prdIds,
       model: actualModel,
       requestedModel: configuredModel,
       reasoningEffort,
@@ -205,14 +228,16 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}, signal
   } catch (error) {
     const analysisFinishedAt = new Date().toISOString()
     await updateState((draft) => {
-      const storedPrd = draft.prds.find((item) => item.id === prdId)
-      if (storedPrd?.analysisStatus === 'analyzing') {
-        markPrdAllocationFailed(storedPrd, error.message, analysisFinishedAt)
+      for (const sourcePrdId of featureGroup?.prdIds || [prdId]) {
+        const storedPrd = draft.prds.find((item) => item.id === sourcePrdId)
+        if (storedPrd?.analysisStatus === 'analyzing') {
+          markPrdAllocationFailed(storedPrd, error.message, analysisFinishedAt)
+        }
       }
     })
     throw error
   } finally {
-    activePrdAnalyses.delete(prdId)
+    activeFeatureAnalyses.delete(featureGroup.featureKey)
   }
 }
 
@@ -283,17 +308,16 @@ app.delete('/api/prds/:id', async (request, response) => {
       const index = state.prds.findIndex((item) => item.id === request.params.id)
       if (index === -1) throw new Error('PRD 不存在')
       const [prd] = state.prds.splice(index, 1)
-      const relatedTasks = state.tasks.filter((task) => task.prdId === prd.id)
-      state.tasks = state.tasks.filter((task) => task.prdId !== prd.id)
+      const deletedTaskCount = removePrdFromFeatureTasks(state, prd.id)
       const createdAt = new Date().toISOString()
       state.activity.unshift({
         id: newId('act'),
         type: 'deletion',
         title: `已删除 ${prd.title}`,
-        detail: `同时移除 ${relatedTasks.length} 个关联任务，历史调整知识保留`,
+        detail: `同时移除 ${deletedTaskCount} 个关联任务，历史调整知识保留`,
         createdAt,
       })
-      deleted = { id: prd.id, title: prd.title, deletedTaskCount: relatedTasks.length }
+      deleted = { id: prd.id, title: prd.title, deletedTaskCount }
     })
     response.json(deleted)
   } catch (error) {
@@ -305,7 +329,7 @@ app.post('/api/prds/:id/analyze', async (request, response) => {
   const wantsStream = request.headers.accept?.includes('text/event-stream')
   if (!wantsStream) {
     try {
-      return response.json(await runPrdAnalysis(request.params.id, request.body))
+      return response.json(await runFeatureAnalysis(request.params.id, request.body))
     } catch (error) {
       return handleError(error, response)
     }
@@ -341,7 +365,7 @@ app.post('/api/prds/:id/analyze', async (request, response) => {
   }, 10000)
 
   try {
-    const result = await runPrdAnalysis(request.params.id, request.body, reportProgress, controller.signal)
+    const result = await runFeatureAnalysis(request.params.id, request.body, reportProgress, controller.signal)
     writeSse(response, 'result', result)
   } catch (error) {
     writeSse(response, 'error', { error: error.message || '请求处理失败', code: error.code || 'REQUEST_FAILED' })
@@ -377,18 +401,31 @@ app.post('/api/prds/analyze-batch', async (request, response) => {
   request.once('aborted', abortOnDisconnect)
   response.once('close', abortOnDisconnect)
 
-  writeSse(response, 'batch-start', { total: prdIds.length, prdIds })
-  const batch = await runSequentialAnalysis(prdIds, async (prdId) => {
+  const state = await readState()
+  const selectedPrds = state.prds.filter((prd) => prdIds.includes(prd.id))
+  const featureGroups = groupPrdsByFeature(selectedPrds).map((selectedGroup) => {
+    const sourcePrd = selectedGroup.prds[0]
+    return featureGroupForPrd(state, sourcePrd.id)
+  })
+
+  writeSse(response, 'batch-start', { total: featureGroups.length, prdIds, featureGroups: featureGroups.map(({ featureKey, featureName, prdIds: sourcePrdIds }) => ({ featureKey, featureName, prdIds: sourcePrdIds })) })
+  const batch = await runSequentialFeatureAnalysis(featureGroups, async (featureGroup) => {
     if (disconnected) {
       const error = new Error('浏览器已断开分析连接')
       error.code = 'REQUEST_ABORTED'
       throw error
     }
 
-    const index = prdIds.indexOf(prdId)
-    const state = await readState()
-    const prd = state.prds.find((item) => item.id === prdId)
-    const item = { index, total: prdIds.length, prdId, title: prd?.title || prdId }
+    const index = featureGroups.findIndex((group) => group.featureKey === featureGroup.featureKey)
+    const item = {
+      index,
+      total: featureGroups.length,
+      featureKey: featureGroup.featureKey,
+      featureName: featureGroup.featureName,
+      prdIds: featureGroup.prdIds,
+      prdId: featureGroup.prdIds[0],
+      title: featureGroup.featureName,
+    }
     writeSse(response, 'batch-item-start', item)
 
     activeController = new AbortController()
@@ -402,7 +439,7 @@ app.post('/api/prds/analyze-batch', async (request, response) => {
       })
     }, 10000)
     try {
-      const result = await runPrdAnalysis(prdId, request.body, (progress) => {
+      const result = await runFeatureAnalysis(item.prdId, request.body, (progress) => {
         lastItemProgress = { ...lastItemProgress, ...progress }
         writeSse(response, 'batch-progress', { ...item, progress: lastItemProgress })
       }, activeController.signal)

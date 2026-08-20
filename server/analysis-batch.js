@@ -22,3 +22,27 @@ export async function runSequentialAnalysis(prdIds, analyze) {
 
   return { succeeded, failed }
 }
+
+export async function runSequentialFeatureAnalysis(groups, analyze) {
+  const seen = new Set()
+  const succeeded = []
+  const failed = []
+
+  for (const group of Array.isArray(groups) ? groups : []) {
+    const featureKey = String(group?.featureKey || '').trim()
+    if (!featureKey || seen.has(featureKey)) continue
+    seen.add(featureKey)
+    const item = {
+      featureKey,
+      featureName: String(group.featureName || featureKey),
+      prdIds: [...new Set((group.prdIds || []).filter(Boolean))],
+    }
+    try {
+      succeeded.push({ ...item, result: await analyze({ ...group, ...item }) })
+    } catch (error) {
+      failed.push({ ...item, error: error.message || '分析失败', code: error.code || 'REQUEST_FAILED' })
+    }
+  }
+
+  return { succeeded, failed }
+}

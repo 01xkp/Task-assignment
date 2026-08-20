@@ -280,8 +280,9 @@ export async function analyzePrd({ prd, knowledge, workloads, useReview = true, 
 2. 跨平台共用的 Dart、Repository、ViewModel、Domain 或 Widget 实现只创建一条“共享实现”任务，不得按平台复制。只有原生配置、权限、生命周期、桌面窗口/托盘、平台差异交互和真实设备验收才拆为“平台适配”或“平台验收”。
 3. 平台专属工作优先由主责人承接：向坤朋负责 Windows/Linux，曾雨秋负责 Android，张徐负责 iOS/macOS。共享实现不绑定平台主责，按照技能、模块上下文和全平台未完成总工时分配。
 4. 负载计算必须覆盖每个人所有平台的现有未完成工时，并累加本次方案内已分配工时；不能只比较某一个平台。优先避免超过 40h，不能为了平均而把平台原生工作交给非主责人。
-5. 每项任务必须提供真实 module、modulePath、workType、platforms、明确验收标准和标题依赖。不要生成产品、设计、后端、发布管理或纯会议任务。`
-  const user = `工程上下文：\n${formatProjectContext()}\n\n团队与全平台负载：\n${teamContext(workloads)}\n\n历史调整知识：\n${formatKnowledge(knowledge)}\n\nPRD 标题：${prd.title}\nPRD 正文：\n${prd.content.slice(0, 50000)}\n\n输出可独立交付的 Flutter 客户端任务。依赖项填写所依赖任务的标题，summary 说明各平台影响面和三人分配后的总工时。`
+5. 每项任务必须提供真实 module、modulePath、workType、platforms、明确验收标准和标题依赖。不要生成产品、设计、后端、发布管理或纯会议任务。
+6. 输入可能包含同一业务功能的开发说明、交付说明和验收说明等多份来源文档。它们是互补材料，不是独立需求；必须只输出一套覆盖完整功能的任务，不能按来源文档重复共享实现、平台适配或平台验收。`
+  const user = `工程上下文：\n${formatProjectContext()}\n\n团队与全平台负载：\n${teamContext(workloads)}\n\n历史调整知识：\n${formatKnowledge(knowledge)}\n\n功能模块：${prd.featureName || prd.title}\n来源 PRD 标题：${prd.title}\nPRD 正文：\n${prd.content.slice(0, 50000)}\n\n输出可独立交付的 Flutter 客户端任务。依赖项填写所依赖任务的标题，summary 说明各平台影响面和三人分配后的总工时。`
   onProgress?.({ stage: 'draft', percent: 14, message: `${model} 正在以 ${reasoningEffort} 强度拆解需求`, model, reasoningEffort })
   const draftStartedAt = Date.now()
   const draftResponse = await requestModel({
@@ -339,8 +340,8 @@ export async function analyzePrd({ prd, knowledge, workloads, useReview = true, 
   }
   const reviewStartedAt = Date.now()
   try {
-    const reviewSystem = `你是 Agino Flutter 多端任务复核者。检查业务模块和代码路径是否真实、共享 Flutter 实现是否被错误地按平台重复、受影响平台是否遗漏、平台专属任务是否交给对应主责人，以及按现有工时加本次任务后的全平台总负载是否合理。检查依赖闭环和验收标准后，直接返回修正后的完整方案。只能使用给定三位开发者，不得加入后端或产品任务。`
-    const reviewUser = `工程上下文：\n${formatProjectContext()}\n\n团队与全平台负载：\n${teamContext(workloads)}\n\n历史调整知识：\n${formatKnowledge(knowledge)}\n\nPRD：\n${prd.content.slice(0, 35000)}\n\n待复核方案：\n${JSON.stringify(draft)}`
+    const reviewSystem = `你是 Agino Flutter 多端任务复核者。检查业务模块和代码路径是否真实、共享 Flutter 实现是否被错误地按平台重复、受影响平台是否遗漏、平台专属任务是否交给对应主责人，以及按现有工时加本次任务后的全平台总负载是否合理。输入的多份来源材料属于同一功能模块，不得为每份来源保留重复任务。检查依赖闭环和验收标准后，直接返回修正后的完整方案。只能使用给定三位开发者，不得加入后端或产品任务。`
+    const reviewUser = `工程上下文：\n${formatProjectContext()}\n\n团队与全平台负载：\n${teamContext(workloads)}\n\n历史调整知识：\n${formatKnowledge(knowledge)}\n\n功能模块：${prd.featureName || prd.title}\nPRD：\n${prd.content.slice(0, 35000)}\n\n待复核方案：\n${JSON.stringify(draft)}`
     onProgress?.({ stage: 'review', percent: 62, message: `${reviewModel} 正在以 ${reasoningEffort} 强度复核方案`, model: reviewModel, reasoningEffort })
     const reviewResponse = await requestModel({
       model: reviewModel,
