@@ -50,3 +50,22 @@ export function toPublicPrd(prd) {
   const { content, ...publicPrd } = prd
   return publicPrd
 }
+
+export function markPrdAllocationStarted(prd, startedAt) {
+  Object.assign(prd, {
+    analysisStatus: 'analyzing',
+    analysisStartedAt: startedAt,
+    analysisFinishedAt: '',
+    analysisError: '',
+    updatedAt: startedAt,
+  })
+}
+
+export function markPrdAllocationFailed(prd, error, finishedAt) {
+  Object.assign(prd, {
+    analysisStatus: 'failed',
+    analysisFinishedAt: finishedAt,
+    analysisError: String(error || '分配失败').slice(0, 240),
+    updatedAt: finishedAt,
+  })
+}

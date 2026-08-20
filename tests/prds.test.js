@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { fingerprintPrdContent, insertParsedPrds, sortPrdsNewestFirst, toPublicPrd } from '../server/prds.js'
+import { fingerprintPrdContent, insertParsedPrds, markPrdAllocationFailed, markPrdAllocationStarted, sortPrdsNewestFirst, toPublicPrd } from '../server/prds.js'
 
 test('hashes formatting-only content differences identically', () => {
   assert.equal(
@@ -35,4 +35,30 @@ test('removes PRD content from the upload response item', () => {
     toPublicPrd({ id: 'prd-1', title: '登录', content: '不应返回', contentFingerprint: 'hash' }),
     { id: 'prd-1', title: '登录', contentFingerprint: 'hash' },
   )
+})
+
+test('records allocation start and clears an earlier failure', () => {
+  const prd = { id: 'prd-1', analysisStatus: 'failed', analysisError: '旧错误', taskCount: 0 }
+
+  markPrdAllocationStarted(prd, '2026-08-20T01:00:00.000Z')
+
+  assert.deepEqual(prd, {
+    id: 'prd-1',
+    analysisStatus: 'analyzing',
+    taskCount: 0,
+    analysisStartedAt: '2026-08-20T01:00:00.000Z',
+    analysisFinishedAt: '',
+    analysisError: '',
+    updatedAt: '2026-08-20T01:00:00.000Z',
+  })
+})
+
+test('records a bounded allocation failure', () => {
+  const prd = { id: 'prd-1', analysisStatus: 'analyzing' }
+
+  markPrdAllocationFailed(prd, '模型请求超时 '.repeat(80), '2026-08-20T01:06:00.000Z')
+
+  assert.equal(prd.analysisStatus, 'failed')
+  assert.equal(prd.analysisFinishedAt, '2026-08-20T01:06:00.000Z')
+  assert.equal(prd.analysisError.length, 240)
 })
