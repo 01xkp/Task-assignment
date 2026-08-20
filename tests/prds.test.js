@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { fingerprintPrdContent, insertParsedPrds, markPrdAllocationFailed, markPrdAllocationStarted, sortPrdsNewestFirst, toPublicPrd } from '../server/prds.js'
+import { fingerprintPrdContent, insertParsedPrds, markPrdAllocationFailed, markPrdAllocationStarted, recoverInterruptedPrdAllocations, sortPrdsNewestFirst, toPublicPrd } from '../server/prds.js'
 
 test('hashes formatting-only content differences identically', () => {
   assert.equal(
@@ -61,4 +61,26 @@ test('records a bounded allocation failure', () => {
   assert.equal(prd.analysisStatus, 'failed')
   assert.equal(prd.analysisFinishedAt, '2026-08-20T01:06:00.000Z')
   assert.equal(prd.analysisError.length, 240)
+})
+
+test('recovers allocations interrupted by a service restart', () => {
+  const state = {
+    prds: [
+      { id: 'prd-1', analysisStatus: 'analyzing', analysisError: '', taskCount: 0 },
+      { id: 'prd-2', analysisStatus: 'completed', analysisError: '', taskCount: 3 },
+    ],
+  }
+
+  const recovered = recoverInterruptedPrdAllocations(state, '2026-08-20T04:00:00.000Z')
+
+  assert.equal(recovered, 1)
+  assert.deepEqual(state.prds[0], {
+    id: 'prd-1',
+    analysisStatus: 'failed',
+    analysisError: '分配服务已重启，上一轮分配已中断，请重新分配',
+    analysisFinishedAt: '2026-08-20T04:00:00.000Z',
+    updatedAt: '2026-08-20T04:00:00.000Z',
+    taskCount: 0,
+  })
+  assert.equal(state.prds[1].analysisStatus, 'completed')
 })

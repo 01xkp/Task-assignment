@@ -9,7 +9,7 @@ import { retrieveKnowledge } from './knowledge.js'
 import { analyzePrd, suggestReassignment } from './model.js'
 import { runSequentialAnalysis, uniquePrdIds } from './analysis-batch.js'
 import { mergeAnalysisProgress } from './model-progress.js'
-import { insertParsedPrds, markPrdAllocationFailed, markPrdAllocationStarted, toPublicPrd } from './prds.js'
+import { insertParsedPrds, markPrdAllocationFailed, markPrdAllocationStarted, recoverInterruptedPrdAllocations, toPublicPrd } from './prds.js'
 import { reconcilePrdTasks } from './tasks.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -547,6 +547,23 @@ const distPath = path.resolve(__dirname, '..', 'dist')
 app.use(express.static(distPath))
 app.get('*all', (_request, response) => response.sendFile(path.join(distPath, 'index.html')))
 
-app.listen(config.port, config.host, () => {
-  console.log(`DevFlow API listening on http://${config.host}:${config.port}`)
+async function startServer() {
+  const initialState = await readState()
+  if (initialState.prds.some((prd) => prd.analysisStatus === 'analyzing')) {
+    const recoveredAt = new Date().toISOString()
+    let recovered = 0
+    await updateState((state) => {
+      recovered = recoverInterruptedPrdAllocations(state, recoveredAt)
+    })
+    console.warn(`Recovered ${recovered} interrupted PRD allocation(s) after restart`)
+  }
+
+  app.listen(config.port, config.host, () => {
+    console.log(`DevFlow API listening on http://${config.host}:${config.port}`)
+  })
+}
+
+startServer().catch((error) => {
+  console.error('DevFlow API failed to start', error)
+  process.exitCode = 1
 })

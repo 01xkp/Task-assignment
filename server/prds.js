@@ -69,3 +69,13 @@ export function markPrdAllocationFailed(prd, error, finishedAt) {
     updatedAt: finishedAt,
   })
 }
+
+export function recoverInterruptedPrdAllocations(state, recoveredAt) {
+  let recovered = 0
+  for (const prd of state.prds || []) {
+    if (prd.analysisStatus !== 'analyzing') continue
+    markPrdAllocationFailed(prd, '分配服务已重启，上一轮分配已中断，请重新分配', recoveredAt)
+    recovered += 1
+  }
+  return recovered
+}
