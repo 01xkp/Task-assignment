@@ -23,7 +23,7 @@ const emit = defineEmits(['close', 'confirm'])
 
       <div class="modal-body delete-prd-body">
         <FileText :size="24" />
-        <div><strong>{{ prd.title }}</strong><span>将同时删除 {{ prd.taskCount || 0 }} 个关联任务，历史调整知识仍会保留。</span></div>
+        <div><strong>{{ prd.title }}</strong><span>将移除此 PRD 与模块任务的关联；只有删除功能模块的最后一份来源 PRD，关联任务才会删除。历史调整知识仍会保留。</span></div>
       </div>
 
       <footer class="modal-footer">

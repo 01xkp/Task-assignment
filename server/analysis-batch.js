@@ -1,3 +1,5 @@
+import { groupPrdsByFeature } from '../shared/feature-modules.js'
+
 export function uniquePrdIds(values) {
   const seen = new Set()
   return (Array.isArray(values) ? values : []).filter((value) => {
@@ -6,6 +8,12 @@ export function uniquePrdIds(values) {
     seen.add(id)
     return true
   })
+}
+
+export function featureGroupsForPrdIds(prds, prdIds) {
+  const prdsById = new Map((Array.isArray(prds) ? prds : []).map((prd) => [prd.id, prd]))
+  const selectedPrds = uniquePrdIds(prdIds).map((prdId) => prdsById.get(prdId)).filter(Boolean)
+  return groupPrdsByFeature(selectedPrds)
 }
 
 export async function runSequentialAnalysis(prdIds, analyze) {

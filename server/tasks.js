@@ -40,7 +40,16 @@ export function reconcileFeatureTasks(state, { featureKey, prdIds, candidates })
   const sourcePrdIds = [...new Set((prdIds || []).filter(Boolean))]
   const sourceIds = new Set(sourcePrdIds)
   const belongs = (task) => belongsToFeature(task, featureKey, sourceIds)
-  const preserved = state.tasks.filter((task) => !belongs(task) || terminalStatuses.has(task.status))
+  const preserved = state.tasks.flatMap((task) => {
+    if (!belongs(task)) return [task]
+    if (!terminalStatuses.has(task.status)) return []
+    return [{
+      ...task,
+      featureKey,
+      sourcePrdIds,
+      prdId: sourceIds.has(task.prdId) ? task.prdId : sourcePrdIds[0],
+    }]
+  })
   const known = new Set(preserved.filter(belongs).map(taskFingerprint))
   const saved = []
 

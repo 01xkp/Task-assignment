@@ -7,7 +7,7 @@ import { developers, newId, publicState, readState, updateState } from './storag
 import { fetchOnlineDocument } from './documents.js'
 import { retrieveKnowledge } from './knowledge.js'
 import { analyzePrd, suggestReassignment } from './model.js'
-import { runSequentialFeatureAnalysis, uniquePrdIds } from './analysis-batch.js'
+import { featureGroupsForPrdIds, runSequentialFeatureAnalysis, uniquePrdIds } from './analysis-batch.js'
 import { mergeAnalysisProgress } from './model-progress.js'
 import { insertParsedPrds, markPrdAllocationFailed, markPrdAllocationStarted, recoverInterruptedPrdAllocations, toPublicPrd } from './prds.js'
 import { parsePrdUpload } from './prd-upload.js'
@@ -402,8 +402,7 @@ app.post('/api/prds/analyze-batch', async (request, response) => {
   response.once('close', abortOnDisconnect)
 
   const state = await readState()
-  const selectedPrds = state.prds.filter((prd) => prdIds.includes(prd.id))
-  const featureGroups = groupPrdsByFeature(selectedPrds).map((selectedGroup) => {
+  const featureGroups = featureGroupsForPrdIds(state.prds, prdIds).map((selectedGroup) => {
     const sourcePrd = selectedGroup.prds[0]
     return featureGroupForPrd(state, sourcePrd.id)
   })

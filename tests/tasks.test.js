@@ -74,3 +74,27 @@ test('keeps shared feature tasks until their last source PRD is deleted', () => 
   assert.equal(removePrdFromFeatureTasks(state, 'prd-b'), 1)
   assert.deepEqual(state.tasks, [])
 })
+
+test('keeps terminal feature tasks when a later analysis adds a source PRD', () => {
+  const state = {
+    tasks: [task({
+      id: 'done',
+      prdId: 'prd-a',
+      featureKey: 'folder:内测邀请码注册-v2',
+      sourcePrdIds: ['prd-a', 'prd-b'],
+      status: '已完成',
+    })],
+  }
+
+  reconcileFeatureTasks(state, {
+    featureKey: 'folder:内测邀请码注册-v2',
+    prdIds: ['prd-a', 'prd-b', 'prd-c'],
+    candidates: [],
+  })
+
+  assert.deepEqual(state.tasks[0].sourcePrdIds, ['prd-a', 'prd-b', 'prd-c'])
+  assert.equal(removePrdFromFeatureTasks(state, 'prd-a'), 0)
+  assert.equal(removePrdFromFeatureTasks(state, 'prd-b'), 0)
+  assert.equal(state.tasks.length, 1)
+  assert.equal(removePrdFromFeatureTasks(state, 'prd-c'), 1)
+})

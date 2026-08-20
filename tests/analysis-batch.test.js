@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { runSequentialAnalysis, runSequentialFeatureAnalysis, uniquePrdIds } from '../server/analysis-batch.js'
+import { featureGroupsForPrdIds, runSequentialAnalysis, runSequentialFeatureAnalysis, uniquePrdIds } from '../server/analysis-batch.js'
 
 test('removes empty and duplicate IDs while preserving selection order', () => {
   assert.deepEqual(uniquePrdIds(['prd-2', '', 'prd-1', 'prd-2']), ['prd-2', 'prd-1'])
@@ -45,4 +45,17 @@ test('runs each feature once and continues after a feature failure', async () =>
     prdIds: ['prd-c'],
     result: { taskCount: 3 },
   })
+})
+
+test('groups selected PRDs in the user selection order', () => {
+  const prds = [
+    { id: 'prd-a', title: '邀请码开发', sourceType: 'file', sourceLabel: '邀请码-v2/开发.md' },
+    { id: 'prd-b', title: '邀请码验收', sourceType: 'file', sourceLabel: '邀请码-v2/验收.md' },
+    { id: 'prd-c', title: '独立需求', sourceType: 'text', sourceLabel: '手动粘贴' },
+  ]
+
+  const groups = featureGroupsForPrdIds(prds, ['prd-c', 'prd-b', 'prd-a', 'prd-b'])
+
+  assert.deepEqual(groups.map((group) => group.featureKey), ['prd:prd-c', 'folder:邀请码-v2'])
+  assert.deepEqual(groups[1].prdIds, ['prd-b', 'prd-a'])
 })
