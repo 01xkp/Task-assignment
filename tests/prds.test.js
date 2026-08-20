@@ -22,6 +22,21 @@ test('keeps only one same-content PRD across a batch and existing state', () => 
   assert.equal(state.prds.length, 2)
 })
 
+test('stores a shared feature identity for documents from the same folder', () => {
+  const state = { prds: [] }
+  let index = 0
+
+  insertParsedPrds(state, [
+    { title: '开发阅读版', content: '开发范围', sourceLabel: '内测邀请码注册-v2/开发.md', sourceType: 'file' },
+    { title: '负责人验收', content: '验收范围', sourceLabel: '内测邀请码注册-v2/验收.md', sourceType: 'file' },
+  ], { createId: () => `prd-${++index}`, now: () => '2026-08-20T00:00:00.000Z' })
+
+  assert.deepEqual(state.prds.map((prd) => [prd.featureKey, prd.featureName]), [
+    ['folder:内测邀请码注册-v2', '内测邀请码注册'],
+    ['folder:内测邀请码注册-v2', '内测邀请码注册'],
+  ])
+})
+
 test('allows updated content with the same filename and orders the update first', () => {
   const state = { prds: [] }
   insertParsedPrds(state, [{ title: '登录', content: '版本一', sourceLabel: '登录.md', sourceType: 'file' }], { createId: () => 'prd-1', now: () => '2026-08-18T00:00:00.000Z' })

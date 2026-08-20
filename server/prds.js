@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { applyFeatureIdentity } from '../shared/feature-modules.js'
 
 export function normalizePrdContent(value) {
   return String(value || '')
@@ -37,7 +38,15 @@ export function insertParsedPrds(state, parsedPrds, { createId, now }) {
     }
 
     const createdAt = now()
-    const prd = { id: createId(), ...parsed, contentFingerprint, createdAt, updatedAt: createdAt, analysisStatus: 'ready', taskCount: 0 }
+    const prd = applyFeatureIdentity({
+      id: createId(),
+      ...parsed,
+      contentFingerprint,
+      createdAt,
+      updatedAt: createdAt,
+      analysisStatus: 'ready',
+      taskCount: 0,
+    })
     known.set(contentFingerprint, prd)
     imported.push(prd)
   }
