@@ -11,6 +11,7 @@ test('maps persisted allocation statuses to Chinese UI labels', () => {
 
 test('uses allocation actions for new, completed, and failed PRDs', () => {
   assert.equal(allocationActionLabel('ready'), '开始分配')
+  assert.equal(allocationActionLabel(undefined), '开始分配')
   assert.equal(allocationActionLabel('completed'), '重新分配')
   assert.equal(allocationActionLabel('failed'), '重新分配')
   assert.equal(allocationActionLabel('analyzing'), '分配中')

@@ -4,3 +4,7 @@ export function modelLifecycleProgress(eventType) {
   }
   return null
 }
+
+export function mergeAnalysisProgress(lastProgress = {}, progress = {}) {
+  return { ...lastProgress, ...progress, heartbeat: progress.heartbeat === true }
+}

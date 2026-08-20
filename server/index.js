@@ -8,6 +8,7 @@ import { fetchOnlineDocument, normalizeUploadedFilename, parseUploadedFile } fro
 import { retrieveKnowledge } from './knowledge.js'
 import { analyzePrd, suggestReassignment } from './model.js'
 import { runSequentialAnalysis, uniquePrdIds } from './analysis-batch.js'
+import { mergeAnalysisProgress } from './model-progress.js'
 import { insertParsedPrds, markPrdAllocationFailed, markPrdAllocationStarted, toPublicPrd } from './prds.js'
 import { reconcilePrdTasks } from './tasks.js'
 
@@ -334,7 +335,7 @@ app.post('/api/prds/:id/analyze', async (request, response) => {
   response.once('close', stopWhenClientDisconnects)
   let lastProgress = { stage: 'connecting', percent: 2, message: '正在连接模型服务', model: config.model, reasoningEffort: config.reasoningEffort }
   const reportProgress = (progress) => {
-    lastProgress = { ...lastProgress, ...progress }
+    lastProgress = mergeAnalysisProgress(lastProgress, progress)
     writeSse(response, 'progress', { ...lastProgress, elapsedSeconds: Math.floor((Date.now() - startedAt) / 1000) })
   }
   reportProgress(lastProgress)

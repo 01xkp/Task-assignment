@@ -10,6 +10,7 @@ export function allocationStatusPresentation(status) {
 }
 
 export function allocationActionLabel(status) {
-  if (status === 'analyzing') return '分配中'
-  return status === 'ready' ? '开始分配' : '重新分配'
+  const { tone } = allocationStatusPresentation(status)
+  if (tone === 'analyzing') return '分配中'
+  return tone === 'ready' ? '开始分配' : '重新分配'
 }
