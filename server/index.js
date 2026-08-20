@@ -8,7 +8,7 @@ import { fetchOnlineDocument, normalizeUploadedFilename, parseUploadedFile } fro
 import { retrieveKnowledge } from './knowledge.js'
 import { analyzePrd, suggestReassignment } from './model.js'
 import { runSequentialAnalysis, uniquePrdIds } from './analysis-batch.js'
-import { insertParsedPrds, toPublicPrd } from './prds.js'
+import { insertParsedPrds, markPrdAllocationFailed, markPrdAllocationStarted, toPublicPrd } from './prds.js'
 import { reconcilePrdTasks } from './tasks.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -106,6 +106,17 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}, signal
       throw error
     }
 
+    const analysisStartedAt = new Date().toISOString()
+    await updateState((draft) => {
+      const storedPrd = draft.prds.find((item) => item.id === prd.id)
+      if (!storedPrd) {
+        const error = new Error('PRD 已在开始分配前被删除')
+        error.code = 'PRD_NOT_FOUND'
+        throw error
+      }
+      markPrdAllocationStarted(storedPrd, analysisStartedAt)
+    })
+
     const configuredModel = config.model
     const configuredReviewModel = config.model
     const reasoningEffort = config.reasoningEffort
@@ -147,6 +158,8 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}, signal
       const reconciliation = reconcilePrdTasks(draft, prd.id, tasks)
       savedTasks = reconciliation.saved
       storedPrd.analyzedAt = createdAt
+      storedPrd.analysisFinishedAt = createdAt
+      storedPrd.analysisError = ''
       storedPrd.updatedAt = createdAt
       storedPrd.analysisStatus = 'completed'
       storedPrd.taskCount = reconciliation.taskCount
@@ -180,6 +193,15 @@ async function runPrdAnalysis(prdId, options = {}, onProgress = () => {}, signal
       modelTrace: result.modelTrace,
       durationMs,
     }
+  } catch (error) {
+    const analysisFinishedAt = new Date().toISOString()
+    await updateState((draft) => {
+      const storedPrd = draft.prds.find((item) => item.id === prdId)
+      if (storedPrd?.analysisStatus === 'analyzing') {
+        markPrdAllocationFailed(storedPrd, error.message, analysisFinishedAt)
+      }
+    })
+    throw error
   } finally {
     activePrdAnalyses.delete(prdId)
   }
@@ -317,7 +339,7 @@ app.post('/api/prds/:id/analyze', async (request, response) => {
   }
   reportProgress(lastProgress)
   const heartbeat = setInterval(() => {
-    reportProgress({ heartbeat: true })
+    reportProgress({ heartbeat: true, waitingForOutput: Boolean(lastProgress.waitingForOutput) })
   }, 10000)
 
   try {
@@ -372,14 +394,19 @@ app.post('/api/prds/analyze-batch', async (request, response) => {
     writeSse(response, 'batch-item-start', item)
 
     activeController = new AbortController()
+    let lastItemProgress = { stage: 'connecting', percent: 2, message: '正在连接模型服务', model: config.model, reasoningEffort: config.reasoningEffort }
     const stageCount = request.body.review === false ? 1 : 2
     const deadline = setTimeout(() => activeController.abort(new DOMException('分析请求超时', 'TimeoutError')), config.modelRequestTimeoutMs * stageCount + 30000)
     const heartbeat = setInterval(() => {
-      writeSse(response, 'batch-progress', { ...item, progress: { stage: 'waiting', heartbeat: true } })
+      writeSse(response, 'batch-progress', {
+        ...item,
+        progress: { ...lastItemProgress, heartbeat: true, waitingForOutput: Boolean(lastItemProgress.waitingForOutput) },
+      })
     }, 10000)
     try {
       const result = await runPrdAnalysis(prdId, request.body, (progress) => {
-        writeSse(response, 'batch-progress', { ...item, progress })
+        lastItemProgress = { ...lastItemProgress, ...progress }
+        writeSse(response, 'batch-progress', { ...item, progress: lastItemProgress })
       }, activeController.signal)
       writeSse(response, 'batch-item-result', { ...item, result })
       return result

@@ -2,6 +2,7 @@ import { config } from './config.js'
 import { developers } from './storage.js'
 import { formatKnowledge } from './knowledge.js'
 import { formatProjectContext, supportedPlatforms } from './project-context.js'
+import { modelLifecycleProgress } from './model-progress.js'
 
 const allocationSchema = {
   type: 'object',
@@ -82,6 +83,8 @@ async function readResponsePayload(response, onStreamProgress) {
       .join('\n')
     if (!data || data === '[DONE]') return
     const event = JSON.parse(data)
+    const lifecycle = modelLifecycleProgress(event.type)
+    if (lifecycle) onStreamProgress?.({ eventType: event.type, ...lifecycle })
     if (event.type === 'response.output_text.delta') {
       outputText += event.delta || ''
       if (outputText.length - lastReportedLength >= 240 || lastReportedLength === 0) {
@@ -114,6 +117,10 @@ async function readResponsePayload(response, onStreamProgress) {
   }
   if (outputText.length > lastReportedLength) onStreamProgress?.({ outputChars: outputText.length })
   return completedResponse || { output_text: outputText }
+}
+
+export async function readResponsePayloadForTest(response, onStreamProgress) {
+  return readResponsePayload(response, onStreamProgress)
 }
 
 function modelTimeoutError() {
@@ -286,13 +293,28 @@ export async function analyzePrd({ prd, knowledge, workloads, useReview = true, 
     reasoningEffort,
     includeMetadata: true,
     signal,
-    onStreamProgress: ({ outputChars }) => onProgress?.({
-      stage: 'draft',
-      percent: Math.min(50, 18 + Math.floor(outputChars / 400)),
-      message: '正在生成模块任务、平台影响和工时分配',
-      model,
-      reasoningEffort,
-    }),
+    onStreamProgress: (stream) => {
+      if (stream.accepted) {
+        onProgress?.({
+          stage: 'draft-accepted',
+          percent: 16,
+          message: '模型已接受请求，正在高强度推理',
+          model,
+          reasoningEffort,
+          waitingForOutput: true,
+        })
+      }
+      if (Number.isFinite(stream.outputChars)) {
+        onProgress?.({
+          stage: 'draft',
+          percent: Math.min(50, 18 + Math.floor(stream.outputChars / 400)),
+          message: '正在生成模块任务、平台影响和工时分配',
+          model,
+          reasoningEffort,
+          waitingForOutput: false,
+        })
+      }
+    },
   })
   const draft = normalizeAllocation(draftResponse.data)
   const draftTrace = { ...draftResponse.metadata, durationMs: Date.now() - draftStartedAt, status: 'completed' }
@@ -329,13 +351,28 @@ export async function analyzePrd({ prd, knowledge, workloads, useReview = true, 
       reasoningEffort,
       includeMetadata: true,
       signal,
-      onStreamProgress: ({ outputChars }) => onProgress?.({
-        stage: 'review',
-        percent: Math.min(90, 66 + Math.floor(outputChars / 500)),
-        message: '正在校验任务覆盖、主责平台和验收标准',
-        model: reviewModel,
-        reasoningEffort,
-      }),
+      onStreamProgress: (stream) => {
+        if (stream.accepted) {
+          onProgress?.({
+            stage: 'review-accepted',
+            percent: 64,
+            message: '模型已接受复核请求，正在高强度推理',
+            model: reviewModel,
+            reasoningEffort,
+            waitingForOutput: true,
+          })
+        }
+        if (Number.isFinite(stream.outputChars)) {
+          onProgress?.({
+            stage: 'review',
+            percent: Math.min(90, 66 + Math.floor(stream.outputChars / 500)),
+            message: '正在校验任务覆盖、主责平台和验收标准',
+            model: reviewModel,
+            reasoningEffort,
+            waitingForOutput: false,
+          })
+        }
+      },
     })
     const reviewed = normalizeAllocation(reviewResponse.data)
     const reviewTrace = { ...reviewResponse.metadata, durationMs: Date.now() - reviewStartedAt, status: 'completed' }
