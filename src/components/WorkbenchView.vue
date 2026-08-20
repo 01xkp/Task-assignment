@@ -19,6 +19,7 @@ import {
   Users,
 } from 'lucide-vue-next'
 import { allocationStatusPresentation } from '../prd-allocation-status.js'
+import { toggleSetValue } from '../expanded-set.js'
 import { groupTasksByPrd } from '../task-groups.js'
 
 const props = defineProps({ workspace: { type: Object, required: true }, externalQuery: { type: String, default: '' } })
@@ -91,10 +92,12 @@ function statusClass(status) {
   }[status] || 'status--todo'
 }
 
-function toggleExpanded(setRef, value) {
-  const next = new Set(setRef.value)
-  next.has(value) ? next.delete(value) : next.add(value)
-  setRef.value = next
+function togglePrdExpanded(prdId) {
+  expandedPrdIds.value = toggleSetValue(expandedPrdIds.value, prdId)
+}
+
+function toggleCategoryExpanded(key) {
+  expandedCategoryKeys.value = toggleSetValue(expandedCategoryKeys.value, key)
 }
 
 function categoryKey(prdId, workType) {
@@ -177,7 +180,7 @@ function formatPrdDate(prd) {
         <div v-if="taskView === 'list'" class="table-wrap grouped-table-wrap">
           <div v-if="groupedTasks.length" class="prd-task-groups">
             <section v-for="group in groupedTasks" :key="group.prd.id" class="prd-task-group">
-              <button class="prd-task-group__header" :aria-expanded="expandedPrdIds.has(group.prd.id)" @click="toggleExpanded(expandedPrdIds, group.prd.id)">
+              <button class="prd-task-group__header" :aria-expanded="expandedPrdIds.has(group.prd.id)" @click="togglePrdExpanded(group.prd.id)">
                 <component :is="expandedPrdIds.has(group.prd.id) ? ChevronDown : ChevronRight" :size="18" />
                 <span class="prd-task-group__identity"><strong>{{ group.prd.title }}</strong><small>{{ formatPrdDate(group.prd) }} · {{ group.prd.taskCount || 0 }} 个任务</small></span>
                 <span class="analysis-state" :class="allocationStatusPresentation(group.prd.analysisStatus).tone">{{ allocationStatusPresentation(group.prd.analysisStatus).label }}</span>
@@ -185,7 +188,7 @@ function formatPrdDate(prd) {
               <div v-if="expandedPrdIds.has(group.prd.id)" class="prd-task-group__body">
                 <div v-if="!group.categories.length" class="prd-task-group__empty">该 PRD 尚未生成开发任务。</div>
                 <section v-for="category in group.categories" :key="category.workType" class="prd-task-category">
-                  <button class="prd-task-category__header" :aria-expanded="expandedCategoryKeys.has(categoryKey(group.prd.id, category.workType))" @click="toggleExpanded(expandedCategoryKeys, categoryKey(group.prd.id, category.workType))">
+                  <button class="prd-task-category__header" :aria-expanded="expandedCategoryKeys.has(categoryKey(group.prd.id, category.workType))" @click="toggleCategoryExpanded(categoryKey(group.prd.id, category.workType))">
                     <component :is="expandedCategoryKeys.has(categoryKey(group.prd.id, category.workType)) ? ChevronDown : ChevronRight" :size="16" />
                     <strong>{{ category.workType }}</strong><small>{{ category.tasks.length }} 项</small>
                   </button>
