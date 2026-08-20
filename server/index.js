@@ -4,12 +4,13 @@ import express from 'express'
 import multer from 'multer'
 import { config, publicModelConfig } from './config.js'
 import { developers, newId, publicState, readState, updateState } from './storage.js'
-import { fetchOnlineDocument, normalizeUploadedFilename, parseUploadedFile } from './documents.js'
+import { fetchOnlineDocument } from './documents.js'
 import { retrieveKnowledge } from './knowledge.js'
 import { analyzePrd, suggestReassignment } from './model.js'
 import { runSequentialAnalysis, uniquePrdIds } from './analysis-batch.js'
 import { mergeAnalysisProgress } from './model-progress.js'
 import { insertParsedPrds, markPrdAllocationFailed, markPrdAllocationStarted, recoverInterruptedPrdAllocations, toPublicPrd } from './prds.js'
+import { parsePrdUpload } from './prd-upload.js'
 import { reconcilePrdTasks } from './tasks.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -17,6 +18,7 @@ const app = express()
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
+  preservePath: true,
   defParamCharset: 'utf8',
 })
 const activePrdAnalyses = new Set()
@@ -24,11 +26,13 @@ const activePrdAnalyses = new Set()
 app.use(express.json({ limit: '2mb' }))
 
 function receivePrdFiles(request, response, next) {
-  upload.fields([{ name: 'files', maxCount: 20 }, { name: 'file', maxCount: 1 }])(request, response, (error) => {
+  upload.fields([{ name: 'files', maxCount: 100 }, { name: 'file', maxCount: 1 }, { name: 'archive', maxCount: 1 }])(request, response, (error) => {
     if (!error) return next()
     const uploadError = new Error(error.code === 'LIMIT_FILE_SIZE'
       ? 'PRD 文档不能超过 10MB'
-      : '上传请求格式无效，请重新选择文档')
+      : ['LIMIT_FILE_COUNT', 'LIMIT_UNEXPECTED_FILE'].includes(error.code)
+        ? '一次最多导入 100 份 PRD 文档'
+        : '上传请求格式无效，请重新选择文档')
     uploadError.code = error.code || 'UPLOAD_FAILED'
     handleError(uploadError, response)
   })
@@ -36,6 +40,10 @@ function receivePrdFiles(request, response, next) {
 
 function uploadedFiles(request) {
   return [...(request.files?.files || []), ...(request.files?.file || [])]
+}
+
+function uploadedArchive(request) {
+  return request.files?.archive?.[0] || null
 }
 
 function duplicatePrdError(duplicate) {
@@ -226,25 +234,14 @@ app.get('/api/prds/:id', async (request, response) => {
 app.post('/api/prds/upload', receivePrdFiles, async (request, response) => {
   try {
     const files = uploadedFiles(request)
-    if (!files.length) throw new Error('请选择要上传的 PRD 文档')
-    const outcomes = await Promise.all(files.map(async (file) => {
-      try {
-        return { parsed: { ...await parseUploadedFile(file), sourceType: 'file' } }
-      } catch (error) {
-        return {
-          failed: {
-            sourceLabel: normalizeUploadedFilename(file.originalname) || '未命名文件',
-            error: error.message || '文档读取失败',
-            code: error.code || 'DOCUMENT_PARSE_FAILED',
-          },
-        }
-      }
-    }))
-    const stored = await storeParsedPrds(outcomes.flatMap((outcome) => outcome.parsed ? [outcome.parsed] : []))
+    const archive = uploadedArchive(request)
+    if (!files.length && !archive) throw new Error('请选择要上传的 PRD 文档、文件夹或 ZIP 包')
+    const outcomes = await parsePrdUpload({ files, archive })
+    const stored = await storeParsedPrds(outcomes.parsed)
     response.status(stored.imported.length ? 201 : 200).json({
       imported: stored.imported.map(toPublicPrd),
       duplicates: stored.duplicates,
-      failed: outcomes.flatMap((outcome) => outcome.failed ? [outcome.failed] : []),
+      failed: outcomes.failed,
     })
   } catch (error) {
     handleError(error, response)
