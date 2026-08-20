@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Bot, CheckCircle2, FileText, Link2, LoaderCircle, Sparkles, Type, UploadCloud, X } from 'lucide-vue-next'
+import { Bot, CheckCircle2, FileArchive, FileText, FolderOpen, Link2, LoaderCircle, Sparkles, Type, UploadCloud, X } from 'lucide-vue-next'
 import { api } from '../api.js'
+import { addSelectedFiles, folderMarkdownFiles, relativeFilePath, selectedFileKey } from '../import-file-selection.js'
 import { isImportResultScreen } from '../import-modal-state.js'
 import { allocationStatusPresentation } from '../prd-allocation-status.js'
 import AnalysisProgress from './AnalysisProgress.vue'
@@ -15,6 +16,9 @@ const emit = defineEmits(['close', 'imported', 'batch-analyzed', 'error'])
 
 const mode = ref(props.initialMode)
 const files = ref([])
+const archive = ref(null)
+const folderInput = ref(null)
+const archiveInput = ref(null)
 const url = ref('')
 const title = ref('')
 const content = ref('')
@@ -29,6 +33,7 @@ const batchProgress = ref({ total: 0, current: 0, currentTitle: '', outcomes: []
 const batchSummary = ref(null)
 const elapsedSeconds = ref(0)
 let elapsedTimer = null
+const supportsFolderImport = 'webkitdirectory' in document.createElement('input')
 
 const modes = [
   { id: 'file', label: '本地文档', icon: FileText },
@@ -38,7 +43,7 @@ const modes = [
 ]
 
 const canImport = computed(() => {
-  if (mode.value === 'file') return files.value.length > 0
+  if (mode.value === 'file') return files.value.length > 0 || Boolean(archive.value)
   if (mode.value === 'url') return /^https?:\/\//.test(url.value)
   if (mode.value === 'text') return content.value.trim().length >= 20
   return false
@@ -63,17 +68,11 @@ function stopElapsedTimer() {
 }
 
 function fileKey(file) {
-  return `${file.name}:${file.size}:${file.lastModified}`
+  return selectedFileKey(file)
 }
 
 function addFiles(nextFiles) {
-  const known = new Set(files.value.map(fileKey))
-  files.value = [...files.value, ...Array.from(nextFiles).filter((file) => {
-    const key = fileKey(file)
-    if (known.has(key)) return false
-    known.add(key)
-    return true
-  })]
+  files.value = addSelectedFiles(files.value, nextFiles)
 }
 
 function selectFiles(event) {
@@ -86,8 +85,30 @@ function onDrop(event) {
   addFiles(event.dataTransfer.files || [])
 }
 
+function chooseFolder() {
+  folderInput.value?.click()
+}
+
+function selectFolder(event) {
+  addFiles(folderMarkdownFiles(event.target.files || []))
+  event.target.value = ''
+}
+
+function chooseArchive() {
+  archiveInput.value?.click()
+}
+
+function selectArchive(event) {
+  archive.value = Array.from(event.target.files || [])[0] || null
+  event.target.value = ''
+}
+
 function removeFile(file) {
   files.value = files.value.filter((item) => fileKey(item) !== fileKey(file))
+}
+
+function removeArchive() {
+  archive.value = null
 }
 
 function setMode(nextMode) {
@@ -108,6 +129,7 @@ function resetImport() {
   batchSummary.value = null
   selectedPrdIds.value = []
   files.value = []
+  archive.value = null
 }
 
 function togglePrd(prdId) {
@@ -126,7 +148,7 @@ async function importPrd() {
   busy.value = true
   try {
     let result
-    if (mode.value === 'file') result = await api.uploadPrds(files.value)
+    if (mode.value === 'file') result = await api.uploadPrds(files.value, archive.value)
     else if (mode.value === 'url') result = { imported: [await api.importUrl(url.value)], duplicates: [], failed: [] }
     else result = { imported: [await api.importText(title.value, content.value)], duplicates: [], failed: [] }
     importResult.value = result
@@ -189,7 +211,7 @@ onBeforeUnmount(stopElapsedTimer)
         <div>
           <span class="modal-kicker"><Sparkles :size="14" /> PRD ANALYSIS</span>
           <h2 id="import-title">{{ batchSummary ? '批量分析完成' : importResult ? '文档导入结果' : mode === 'library' ? '选择已上传 PRD' : '导入产品需求文档' }}</h2>
-          <p>{{ batchSummary ? '可关闭窗口并在工作台查看按 PRD 分组的任务。' : importResult ? '重复正文已跳过，成功导入的文档可以加入分析队列。' : mode === 'library' ? '多选已上传文档，按选择顺序依次分析。' : '支持本地文件、在线文档和直接粘贴正文。' }}</p>
+          <p>{{ batchSummary ? '可关闭窗口并在工作台查看按 PRD 分组的任务。' : importResult ? '重复正文已跳过，成功导入的文档可以加入分析队列。' : mode === 'library' ? '多选已上传文档，按选择顺序依次分析。' : '支持本地文件、文件夹、ZIP、在线文档和直接粘贴正文。' }}</p>
         </div>
         <button class="icon-button" title="关闭" :disabled="analyzing" @click="requestClose"><X :size="20" /></button>
       </header>
@@ -205,18 +227,25 @@ onBeforeUnmount(stopElapsedTimer)
           <template v-if="mode === 'file'">
             <label
               class="drop-zone"
-              :class="{ 'drop-zone--active': dragging, 'drop-zone--selected': files.length }"
+              :class="{ 'drop-zone--active': dragging, 'drop-zone--selected': files.length || archive }"
               @dragover.prevent="dragging = true"
               @dragleave.prevent="dragging = false"
               @drop.prevent="onDrop"
             >
               <input type="file" multiple accept=".pdf,.docx,.md,.txt,.json" @change="selectFiles" />
-              <div class="drop-icon"><FileText v-if="files.length" :size="27" /><UploadCloud v-else :size="27" /></div>
-              <strong>{{ files.length ? `已选择 ${files.length} 份 PRD` : '选择 PRD 文档' }}</strong>
+              <div class="drop-icon"><FileText v-if="files.length || archive" :size="27" /><UploadCloud v-else :size="27" /></div>
+              <strong>{{ files.length ? `已选择 ${files.length} 份 PRD` : archive ? `已选择 ZIP：${archive.name}` : '选择 PRD 文档' }}</strong>
               <span>PDF、DOCX、Markdown 或纯文本，单文件最大 10MB</span>
             </label>
-            <div v-if="files.length" class="selected-file-list" aria-label="已选择文件">
-              <div v-for="file in files" :key="fileKey(file)" class="selected-file-row"><FileText :size="16" /><span>{{ file.name }}</span><small>{{ (file.size / 1024).toFixed(1) }} KB</small><button class="icon-button" title="移除文件" @click.prevent="removeFile(file)"><X :size="15" /></button></div>
+            <input v-if="supportsFolderImport" ref="folderInput" class="import-source-input" type="file" multiple webkitdirectory accept=".md,text/markdown" @change="selectFolder" />
+            <input ref="archiveInput" class="import-source-input" type="file" accept=".zip,application/zip" @change="selectArchive" />
+            <div class="import-source-actions">
+              <button v-if="supportsFolderImport" type="button" class="secondary-button" @click="chooseFolder"><FolderOpen :size="16" />选择文件夹</button>
+              <button type="button" class="secondary-button" @click="chooseArchive"><FileArchive :size="16" />导入 ZIP</button>
+            </div>
+            <div v-if="files.length || archive" class="selected-file-list" aria-label="已选择文件">
+              <div v-for="file in files" :key="fileKey(file)" class="selected-file-row"><FileText :size="16" /><span :title="relativeFilePath(file)">{{ relativeFilePath(file) }}</span><small>{{ (file.size / 1024).toFixed(1) }} KB</small><button class="icon-button" title="移除文件" @click.prevent="removeFile(file)"><X :size="15" /></button></div>
+              <div v-if="archive" class="selected-file-row selected-file-row--archive"><FileArchive :size="16" /><span :title="archive.name">{{ archive.name }}</span><small>{{ (archive.size / 1024).toFixed(1) }} KB</small><button class="icon-button" title="移除 ZIP" @click.prevent="removeArchive"><X :size="15" /></button></div>
             </div>
           </template>
 

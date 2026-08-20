@@ -1,3 +1,5 @@
+import { uploadFilename } from './import-file-selection.js'
+
 async function responseError(response) {
   const data = await response.json().catch(() => ({}))
   const error = new Error(data.error || '请求失败，请稍后重试')
@@ -96,9 +98,10 @@ async function readBatchAnalysisStream(response, onEvent) {
   return result
 }
 
-function uploadPrds(files) {
+function uploadPrds(files, archive = null) {
   const form = new FormData()
-  for (const file of files) form.append('files', file)
+  for (const file of files) form.append('files', file, uploadFilename(file))
+  if (archive) form.append('archive', archive, archive.name)
   return request('/api/prds/upload', { method: 'POST', body: form })
 }
 

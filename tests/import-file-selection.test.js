@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { addSelectedFiles, folderMarkdownFiles, relativeFilePath } from '../src/import-file-selection.js'
+import { addSelectedFiles, folderMarkdownFiles, relativeFilePath, uploadFilename } from '../src/import-file-selection.js'
 
 const file = (name, webkitRelativePath = name, size = 1, lastModified = 1) => ({ name, webkitRelativePath, size, lastModified })
 
@@ -20,4 +20,9 @@ test('deduplicates the same relative file while retaining distinct folders', () 
   const distinct = file('需求.md', 'B/需求.md', 10, 20)
 
   assert.deepEqual(addSelectedFiles([first], [duplicate, distinct]).map(relativeFilePath), ['A/需求.md', 'B/需求.md'])
+})
+
+test('uses the folder-relative path as the multipart filename', () => {
+  assert.equal(uploadFilename(file('需求.md', '目录/子目录/需求.md')), '目录/子目录/需求.md')
+  assert.equal(uploadFilename(file('需求.md', '')), '需求.md')
 })

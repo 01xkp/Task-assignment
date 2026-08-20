@@ -21,3 +21,7 @@ export function addSelectedFiles(currentFiles, nextFiles) {
 export function folderMarkdownFiles(files) {
   return Array.from(files).filter((file) => markdownPath.test(relativeFilePath(file)))
 }
+
+export function uploadFilename(file) {
+  return relativeFilePath(file) || String(file?.name || '未命名文件')
+}

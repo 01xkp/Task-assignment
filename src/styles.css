@@ -1985,6 +1985,14 @@ button:disabled {
   opacity: 0;
 }
 
+.import-source-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .drop-icon {
   display: grid;
   width: 51px;
@@ -1999,6 +2007,9 @@ button:disabled {
 
 .drop-zone strong { max-width: 90%; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .drop-zone > span { margin-top: 7px; color: #8c9590; font-size: 11px; }
+
+.import-source-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.import-source-actions .secondary-button { justify-content: center; min-width: 0; }
 
 .selected-file-list,
 .import-result-list,
@@ -2029,6 +2040,7 @@ button:disabled {
 .selected-file-row > span { min-width: 0; flex: 1; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .selected-file-row > small { flex: 0 0 auto; color: var(--muted-2); font-size: 10px; }
 .selected-file-row .icon-button { width: 25px; height: 25px; flex: 0 0 auto; }
+.selected-file-row--archive > svg { color: var(--green-dark); }
 
 .import-result-row > span:last-child,
 .prd-selection-row > span {
@@ -2769,6 +2781,7 @@ button:disabled {
   .modal-body { padding: 16px; }
   .import-tabs { grid-template-columns: repeat(2, 1fr); padding: 0 12px; }
   .import-tabs button { font-size: 12px; }
+  .import-source-actions { grid-template-columns: 1fr; }
   .modal-footer { align-items: flex-start; flex-direction: column; padding: 11px 16px; }
   .modal-footer > div { width: 100%; }
   .modal-footer > div button { flex: 1; }
