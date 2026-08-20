@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Bot, CheckCircle2, FileText, Link2, LoaderCircle, Sparkles, Type, UploadCloud, X } from 'lucide-vue-next'
 import { api } from '../api.js'
 import { isImportResultScreen } from '../import-modal-state.js'
+import { allocationStatusPresentation } from '../prd-allocation-status.js'
 import AnalysisProgress from './AnalysisProgress.vue'
 
 const props = defineProps({
@@ -224,7 +225,7 @@ onBeforeUnmount(stopElapsedTimer)
             <label v-for="prd in workspace.prds" :key="prd.id" class="prd-selection-row">
               <input type="checkbox" :checked="selectedPrdIds.includes(prd.id)" :disabled="analyzing" @change="togglePrd(prd.id)" />
               <FileText :size="18" />
-              <span><strong>{{ prd.title }}</strong><small>{{ prd.sourceLabel }} · {{ prd.taskCount || 0 }} 个任务 · {{ prd.analysisStatus === 'completed' ? '已分析' : '待分析' }}</small></span>
+              <span><strong>{{ prd.title }}</strong><small>{{ prd.sourceLabel }} · {{ prd.taskCount || 0 }} 个任务 · <span class="analysis-state" :class="allocationStatusPresentation(prd.analysisStatus).tone">{{ allocationStatusPresentation(prd.analysisStatus).label }}</span></small></span>
             </label>
             <div v-if="!workspace.prds.length" class="selection-empty">暂无已上传 PRD，请先导入文档。</div>
           </div>

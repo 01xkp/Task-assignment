@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { Bot, Boxes, FileCheck2, FileText, Link2, MonitorSmartphone, Plus, Search, Trash2, UploadCloud } from 'lucide-vue-next'
+import { allocationActionLabel, allocationStatusPresentation } from '../prd-allocation-status.js'
 
 const props = defineProps({ workspace: { type: Object, required: true }, analyzingPrdId: { type: String, default: '' } })
 const emit = defineEmits(['import', 'analyze', 'delete'])
@@ -53,11 +54,12 @@ function sourceIcon(type) {
             </div>
           </div>
           <div class="document-result">
-            <span class="analysis-state" :class="{ completed: prd.analysisStatus === 'completed' }">{{ prd.analysisStatus === 'completed' ? '已分析' : '待分析' }}</span>
+            <span class="analysis-state" :class="allocationStatusPresentation(prd.analysisStatus).tone">{{ allocationStatusPresentation(prd.analysisStatus).label }}</span>
+            <p v-if="prd.analysisStatus === 'failed' && prd.analysisError" class="document-analysis-error">{{ prd.analysisError }}</p>
             <strong>{{ prd.taskCount || 0 }}<small> 个任务</small></strong>
           </div>
-          <button class="secondary-button document-action" :disabled="Boolean(analyzingPrdId)" @click="emit('analyze', prd)">
-            <Bot :size="16" />{{ analyzingPrdId === prd.id ? '分析中' : '重新分析' }}
+          <button class="secondary-button document-action" :disabled="Boolean(analyzingPrdId) || prd.analysisStatus === 'analyzing'" @click="emit('analyze', prd)">
+            <Bot :size="16" />{{ allocationActionLabel(prd.analysisStatus) }}
           </button>
           <button class="icon-button document-delete" title="删除 PRD" :disabled="Boolean(analyzingPrdId)" @click="emit('delete', prd)"><Trash2 :size="18" /></button>
         </article>

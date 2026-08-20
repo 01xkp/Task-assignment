@@ -18,6 +18,7 @@ import {
   Sparkles,
   Users,
 } from 'lucide-vue-next'
+import { allocationStatusPresentation } from '../prd-allocation-status.js'
 import { groupTasksByPrd } from '../task-groups.js'
 
 const props = defineProps({ workspace: { type: Object, required: true }, externalQuery: { type: String, default: '' } })
@@ -179,7 +180,7 @@ function formatPrdDate(prd) {
               <button class="prd-task-group__header" :aria-expanded="expandedPrdIds.has(group.prd.id)" @click="toggleExpanded(expandedPrdIds, group.prd.id)">
                 <component :is="expandedPrdIds.has(group.prd.id) ? ChevronDown : ChevronRight" :size="18" />
                 <span class="prd-task-group__identity"><strong>{{ group.prd.title }}</strong><small>{{ formatPrdDate(group.prd) }} · {{ group.prd.taskCount || 0 }} 个任务</small></span>
-                <span class="analysis-state" :class="{ completed: group.prd.analysisStatus === 'completed' }">{{ group.prd.analysisStatus === 'completed' ? '已分析' : '待分析' }}</span>
+                <span class="analysis-state" :class="allocationStatusPresentation(group.prd.analysisStatus).tone">{{ allocationStatusPresentation(group.prd.analysisStatus).label }}</span>
               </button>
               <div v-if="expandedPrdIds.has(group.prd.id)" class="prd-task-group__body">
                 <div v-if="!group.categories.length" class="prd-task-group__empty">该 PRD 尚未生成开发任务。</div>

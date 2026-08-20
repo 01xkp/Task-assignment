@@ -1514,6 +1514,22 @@ button:disabled {
   background: var(--green);
 }
 
+.analysis-state.analyzing {
+  color: #986b22;
+  background: #fff7e7;
+}
+
+.analysis-state.failed {
+  color: #a54c3f;
+  background: #fff2ef;
+}
+
+.document-analysis-error {
+  margin-top: 5px;
+  color: #a54c3f;
+  font-size: 11px;
+}
+
 .document-result strong {
   color: #26312c;
   font-size: 19px;

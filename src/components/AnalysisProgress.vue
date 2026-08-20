@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { BrainCircuit, Timer } from 'lucide-vue-next'
+import { progressDetail } from '../analysis-progress-state.js'
 
 const props = defineProps({
   progress: { type: Object, default: () => ({}) },
@@ -30,7 +31,7 @@ const elapsedLabel = computed(() => {
       <span :style="{ width: `${percent}%` }"></span>
     </div>
     <div class="analysis-progress-detail">
-      <span>{{ progress.message || '正在连接模型服务' }}</span>
+      <span>{{ progressDetail(progress) }}</span>
       <strong>{{ percent }}%</strong>
     </div>
   </div>

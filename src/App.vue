@@ -158,6 +158,7 @@ async function analyzeExisting(prd) {
     })
     await handleAnalyzed(result)
   } catch (error) {
+    await loadState()
     notify(error.message, 'error')
   } finally {
     window.clearInterval(existingAnalysisTimer)
