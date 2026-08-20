@@ -14,7 +14,7 @@
 
 ## 功能
 
-- 导入 PDF、DOCX、Markdown、TXT、JSON，或读取在线网页与文档直链。
+- 支持导入普通 PDF、DOCX、Markdown、TXT、JSON 文件，递归选择文件夹中的 Markdown，以及包含 Markdown 的 ZIP 包；也可读取在线网页与文档直链。
 - 使用 `.env.local` 的 `OPENAI_MODEL` 完成任务拆分和可选方案复核。
 - 拆分共享实现、平台适配和平台验收任务，并可启用第二次方案复核。
 - 展示上下文准备、任务拆分、复核、保存等实时进度，分析期间阻止关闭弹窗和重复提交。
