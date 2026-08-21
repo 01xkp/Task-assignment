@@ -4,44 +4,76 @@ import { formatKnowledge } from './knowledge.js'
 import { formatProjectContext, supportedPlatforms } from './project-context.js'
 import { modelLifecycleProgress } from './model-progress.js'
 import { eligibleReassignmentCandidates } from './task-allocation.js'
-import { taskDiscipline } from '../shared/allocation-profile.js'
+import { developersByDiscipline, normalizeAllocationProfile, taskDiscipline } from '../shared/allocation-profile.js'
 
-const allocationSchema = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['summary', 'tasks'],
-  properties: {
-    summary: { type: 'string' },
-    tasks: {
-      type: 'array',
-      minItems: 1,
-      maxItems: 40,
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['title', 'description', 'module', 'modulePath', 'workType', 'platforms', 'priority', 'estimateHours', 'suggestedAssignee', 'reasoning', 'acceptanceCriteria', 'dependencies'],
-        properties: {
-          title: { type: 'string' },
-          description: { type: 'string' },
-          module: { type: 'string' },
-          modulePath: { type: 'string' },
-          workType: { type: 'string', enum: ['共享实现', '平台适配', '平台验收'] },
-          platforms: {
-            type: 'array',
-            minItems: 1,
-            uniqueItems: true,
-            items: { type: 'string', enum: supportedPlatforms },
-          },
-          priority: { type: 'string', enum: ['高', '中', '低'] },
-          estimateHours: { type: 'number', minimum: 1, maximum: 80 },
-          suggestedAssignee: { type: 'string', enum: developers.map((item) => item.name) },
-          reasoning: { type: 'string' },
-          acceptanceCriteria: { type: 'array', items: { type: 'string' }, minItems: 1 },
-          dependencies: { type: 'array', items: { type: 'string' } },
-        },
-      },
+const frontendWorkTypes = ['共享实现', '平台适配', '平台验收']
+
+function allocationTeam(profile, team) {
+  const normalizedProfile = normalizeAllocationProfile(profile, team)
+  const frontendById = new Map(developersByDiscipline(team, 'frontend').map((developer) => [developer.id, developer]))
+  const backendById = new Map(developersByDiscipline(team, 'backend').map((developer) => [developer.id, developer]))
+  return {
+    profile: normalizedProfile,
+    frontend: normalizedProfile.frontendDeveloperIds.map((id) => frontendById.get(id)).filter(Boolean),
+    backend: normalizedProfile.includeBackend ? backendById.get(normalizedProfile.backendOwnerId) : null,
+  }
+}
+
+function commonTaskProperties({ deliveryType, workType, platforms, assignees }) {
+  return {
+    title: { type: 'string' },
+    description: { type: 'string' },
+    module: { type: 'string' },
+    modulePath: { type: 'string' },
+    deliveryType: { type: 'string', const: deliveryType },
+    workType,
+    platforms,
+    priority: { type: 'string', enum: ['高', '中', '低'] },
+    estimateHours: { type: 'number', minimum: 1, maximum: 80 },
+    suggestedAssignee: { type: 'string', enum: assignees },
+    reasoning: { type: 'string' },
+    acceptanceCriteria: { type: 'array', items: { type: 'string' }, minItems: 1 },
+    dependencies: { type: 'array', items: { type: 'string' } },
+  }
+}
+
+function taskSchema(properties) {
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['title', 'description', 'module', 'modulePath', 'deliveryType', 'workType', 'platforms', 'priority', 'estimateHours', 'suggestedAssignee', 'reasoning', 'acceptanceCriteria', 'dependencies'],
+    properties,
+  }
+}
+
+export function createAllocationSchema(profile, team = developers) {
+  const selected = allocationTeam(profile, team)
+  const frontend = taskSchema(commonTaskProperties({
+    deliveryType: 'frontend',
+    workType: { type: 'string', enum: frontendWorkTypes },
+    platforms: { type: 'array', minItems: 1, uniqueItems: true, items: { type: 'string', enum: supportedPlatforms } },
+    assignees: selected.frontend.map((developer) => developer.name),
+  }))
+  const branches = [frontend]
+
+  if (selected.backend) {
+    branches.push(taskSchema(commonTaskProperties({
+      deliveryType: 'backend',
+      workType: { type: 'string', const: '后端实现' },
+      platforms: { type: 'array', minItems: 1, maxItems: 1, uniqueItems: true, items: { type: 'string', const: '服务端' } },
+      assignees: [selected.backend.name],
+    })))
+  }
+
+  return {
+    type: 'object',
+    additionalProperties: false,
+    required: ['summary', 'tasks'],
+    properties: {
+      summary: { type: 'string' },
+      tasks: { type: 'array', minItems: 1, maxItems: 40, items: { oneOf: branches } },
     },
-  },
+  }
 }
 
 function endpoint() {
@@ -238,60 +270,98 @@ async function requestModel({ model, system, user, schema, schemaName = 'result'
   }
 }
 
-function teamContext(workloads = {}) {
-  return developers.map((developer) => {
+function teamContext(workloads = {}, team = developers) {
+  return team.map((developer) => {
     const load = workloads[developer.name] || 0
     return `- ${developer.name}｜主责：${developer.role}｜主责平台：${developer.primaryPlatforms.join('、')}｜技能：${developer.skills.join('、')}｜全平台未完成工时：${load}h/${developer.weeklyCapacity}h`
   }).join('\n')
 }
 
-function normalizePlatforms(platforms) {
+function normalizeFrontendPlatforms(platforms) {
   const values = Array.isArray(platforms)
     ? [...new Set(platforms.filter((platform) => supportedPlatforms.includes(platform)))]
     : []
   return values.length ? values : ['共享 Flutter']
 }
 
-function normalizeAllocation(result) {
+function normalizeTaskFields(task) {
   return {
-    summary: String(result.summary || '已完成任务拆解'),
-    tasks: (result.tasks || []).map((task) => ({
-      title: String(task.title || '未命名任务').slice(0, 100),
-      description: String(task.description || ''),
-      module: String(task.module || '未分类').slice(0, 40),
-      modulePath: String(task.modulePath || 'lib/features').slice(0, 120),
-      workType: ['共享实现', '平台适配', '平台验收'].includes(task.workType) ? task.workType : '共享实现',
-      platforms: normalizePlatforms(task.platforms),
-      priority: ['高', '中', '低'].includes(task.priority) ? task.priority : '中',
-      estimateHours: Math.min(80, Math.max(1, Number(task.estimateHours) || 4)),
-      suggestedAssignee: developers.some((item) => item.name === task.suggestedAssignee) ? task.suggestedAssignee : developers[0].name,
-      reasoning: String(task.reasoning || '基于技能匹配与当前负载分配。'),
-      acceptanceCriteria: Array.isArray(task.acceptanceCriteria) ? task.acceptanceCriteria.map(String) : [],
-      dependencies: Array.isArray(task.dependencies) ? task.dependencies.map(String) : [],
-    })),
+    title: String(task.title || '未命名任务').slice(0, 100),
+    description: String(task.description || ''),
+    module: String(task.module || '未分类').slice(0, 40),
+    modulePath: String(task.modulePath || 'lib/features').slice(0, 120),
+    priority: ['高', '中', '低'].includes(task.priority) ? task.priority : '中',
+    estimateHours: Math.min(80, Math.max(1, Number(task.estimateHours) || 4)),
+    reasoning: String(task.reasoning || '基于技能匹配与当前负载分配。'),
+    acceptanceCriteria: Array.isArray(task.acceptanceCriteria) ? task.acceptanceCriteria.map(String) : [],
+    dependencies: Array.isArray(task.dependencies) ? task.dependencies.map(String) : [],
   }
 }
 
-export async function analyzePrd({ prd, knowledge, workloads, useReview = true, reasoningEffort = config.reasoningEffort, onProgress, signal }) {
-  const model = config.model
-  const reviewModel = config.model
-  const system = `你是 Agino Flutter 多端客户端的资深研发项目经理。只生成 Flutter 客户端开发、平台适配和客户端验收任务，只能分配给给定三位开发者。
+export function normalizeAllocationForProfile(result, profile, team = developers) {
+  const selected = allocationTeam(profile, team)
+  return {
+    summary: String(result.summary || '已完成任务拆解'),
+    tasks: (Array.isArray(result?.tasks) ? result.tasks : []).flatMap((task) => {
+      const isBackend = taskDiscipline(task) === 'backend'
+      if (isBackend && !selected.backend) return []
+      const fields = normalizeTaskFields(task)
+      if (isBackend) {
+        return [{
+          ...fields,
+          deliveryType: 'backend',
+          workType: '后端实现',
+          platforms: ['服务端'],
+          suggestedAssignee: selected.backend.name,
+        }]
+      }
+      const suggestedAssignee = selected.frontend.some((developer) => developer.name === task.suggestedAssignee)
+        ? task.suggestedAssignee
+        : selected.frontend[0].name
+      return [{
+        ...fields,
+        deliveryType: 'frontend',
+        workType: frontendWorkTypes.includes(task.workType) ? task.workType : '共享实现',
+        platforms: normalizeFrontendPlatforms(task.platforms),
+        suggestedAssignee,
+      }]
+    }),
+  }
+}
+
+export function buildAllocationInstructions(profile, team = developers) {
+  const selected = allocationTeam(profile, team)
+  const frontendNames = selected.frontend.map((developer) => developer.name).join('、')
+  const backendInstruction = selected.backend
+    ? `后端任务已启用，唯一后端主责人为 ${selected.backend.name}。后端任务只描述服务端 API、handler/service/repository、数据库迁移、事务或接口测试；平台固定为服务端，工作类型固定为后端实现。`
+    : '后端任务未启用，不得生成后端实现、服务端平台、后端负责人、产品、设计、发布管理或纯会议任务。'
+  return `你是 Agino Flutter 多端客户端与 Go 服务端协作的资深研发项目经理。
+
+本功能可分配的前端人员只有：${frontendNames}。${backendInstruction}
 
 拆分规则：
 1. 先识别受影响的真实业务模块和代码目录，再判断 Android、iOS、macOS、Windows、Linux 的影响面；不得因为项目支持五个平台就机械地为所有平台生成任务。
-2. 跨平台共用的 Dart、Repository、ViewModel、Domain 或 Widget 实现只创建一条“共享实现”任务，不得按平台复制。只有原生配置、权限、生命周期、桌面窗口/托盘、平台差异交互和真实设备验收才拆为“平台适配”或“平台验收”。
-3. 平台专属工作优先由主责人承接：向坤朋负责 Windows/Linux，曾雨秋负责 Android，张徐负责 iOS/macOS。共享实现不绑定平台主责，按照技能、模块上下文和全平台未完成总工时分配。
-4. 负载计算必须覆盖每个人所有平台的现有未完成工时，并累加本次方案内已分配工时；不能只比较某一个平台。优先避免超过 40h，不能为了平均而把平台原生工作交给非主责人。
-5. 每项任务必须提供真实 module、modulePath、workType、platforms、明确验收标准和标题依赖。不要生成产品、设计、后端、发布管理或纯会议任务。
-6. 输入可能包含同一业务功能的开发说明、交付说明和验收说明等多份来源文档。它们是互补材料，不是独立需求；必须只输出一套覆盖完整功能的任务，不能按来源文档重复共享实现、平台适配或平台验收。`
-  const user = `工程上下文：\n${formatProjectContext()}\n\n团队与全平台负载：\n${teamContext(workloads)}\n\n历史调整知识：\n${formatKnowledge(knowledge)}\n\n功能模块：${prd.featureName || prd.title}\n来源 PRD 标题：${prd.title}\nPRD 正文：\n${prd.content.slice(0, 50000)}\n\n输出可独立交付的 Flutter 客户端任务。依赖项填写所依赖任务的标题，summary 说明各平台影响面和三人分配后的总工时。`
+2. 跨平台共用的 Dart、Repository、ViewModel、Domain 或 Widget 实现只创建一条共享实现任务，不得按平台复制。只有原生配置、权限、生命周期、桌面窗口/托盘、平台差异交互和真实设备验收才拆为平台适配或平台验收。
+3. 前端任务只能分配给本功能已选择的前端人员；不可用人员不得出现在结果中。当某平台原主责人未被选择时，只能在已选择的前端人员中重新分配：先匹配主责平台，再匹配技能，最后比较当前总工时；本次方案内已分配工时也必须累加。
+4. 负载计算必须覆盖每个人所有平台的现有未完成工时，优先避免超过 40h，不能为了平均而把平台原生工作交给不匹配的候选人。
+5. 输入可能包含同一功能的开发说明、交付说明和验收说明等多份来源文档。它们是互补材料，不是独立需求；只输出一套覆盖完整功能的任务，尤其不得生成重复后端任务。
+6. 每项任务必须提供真实 module、modulePath、workType、platforms、明确验收标准和标题依赖。后端参考只可作为通用上下文：Go 服务常使用 handler/service/repository 分层，模块可能位于 internal/modules/*，迁移可能位于 internal/db/migrations，API 可能位于 cmd/api；这些路径不是必须生成的结果。`
+}
+
+export async function analyzePrd({ prd, knowledge, workloads, allocationProfile, useReview = true, reasoningEffort = config.reasoningEffort, onProgress, signal }) {
+  const model = config.model
+  const reviewModel = config.model
+  const selected = allocationTeam(allocationProfile, developers)
+  const allowedTeam = [...selected.frontend, ...(selected.backend ? [selected.backend] : [])]
+  const system = buildAllocationInstructions(selected.profile, developers)
+  const user = `工程上下文：\n${formatProjectContext()}\n\n允许分配的团队与全平台负载：\n${teamContext(workloads, allowedTeam)}\n\n历史调整知识：\n${formatKnowledge(knowledge)}\n\n功能模块：${prd.featureName || prd.title}\n来源 PRD 标题：${prd.title}\nPRD 正文：\n${prd.content.slice(0, 50000)}\n\n输出可独立交付的前端任务，以及仅在已启用时输出的后端任务。依赖项填写所依赖任务的标题，summary 说明影响面和分配后的总工时。`
   onProgress?.({ stage: 'draft', percent: 14, message: `${model} 正在以 ${reasoningEffort} 强度拆解需求`, model, reasoningEffort })
   const draftStartedAt = Date.now()
   const draftResponse = await requestModel({
     model,
     system,
     user,
-    schema: allocationSchema,
+    schema: createAllocationSchema(selected.profile, developers),
     schemaName: 'task_allocation',
     reasoningEffort,
     includeMetadata: true,
@@ -319,7 +389,7 @@ export async function analyzePrd({ prd, knowledge, workloads, useReview = true, 
       }
     },
   })
-  const draft = normalizeAllocation(draftResponse.data)
+  const draft = normalizeAllocationForProfile(draftResponse.data, selected.profile, developers)
   const draftTrace = { ...draftResponse.metadata, durationMs: Date.now() - draftStartedAt, status: 'completed' }
   onProgress?.({
     stage: 'draft-complete',
@@ -342,14 +412,14 @@ export async function analyzePrd({ prd, knowledge, workloads, useReview = true, 
   }
   const reviewStartedAt = Date.now()
   try {
-    const reviewSystem = `你是 Agino Flutter 多端任务复核者。检查业务模块和代码路径是否真实、共享 Flutter 实现是否被错误地按平台重复、受影响平台是否遗漏、平台专属任务是否交给对应主责人，以及按现有工时加本次任务后的全平台总负载是否合理。输入的多份来源材料属于同一功能模块，不得为每份来源保留重复任务。检查依赖闭环和验收标准后，直接返回修正后的完整方案。只能使用给定三位开发者，不得加入后端或产品任务。`
-    const reviewUser = `工程上下文：\n${formatProjectContext()}\n\n团队与全平台负载：\n${teamContext(workloads)}\n\n历史调整知识：\n${formatKnowledge(knowledge)}\n\n功能模块：${prd.featureName || prd.title}\nPRD：\n${prd.content.slice(0, 35000)}\n\n待复核方案：\n${JSON.stringify(draft)}`
+    const reviewSystem = `你是 Agino 研发任务复核者。检查任务覆盖、业务模块和代码路径是否真实、共享实现是否重复、平台影响是否遗漏、任务是否遵守可分配人员和后端唯一主责约束，以及按现有工时加本次任务后的总负载是否合理。检查依赖闭环和验收标准后，直接返回修正后的完整方案。\n\n${system}`
+    const reviewUser = `工程上下文：\n${formatProjectContext()}\n\n允许分配的团队与全平台负载：\n${teamContext(workloads, allowedTeam)}\n\n历史调整知识：\n${formatKnowledge(knowledge)}\n\n功能模块：${prd.featureName || prd.title}\nPRD：\n${prd.content.slice(0, 35000)}\n\n待复核方案：\n${JSON.stringify(draft)}`
     onProgress?.({ stage: 'review', percent: 62, message: `${reviewModel} 正在以 ${reasoningEffort} 强度复核方案`, model: reviewModel, reasoningEffort })
     const reviewResponse = await requestModel({
       model: reviewModel,
       system: reviewSystem,
       user: reviewUser,
-      schema: allocationSchema,
+      schema: createAllocationSchema(selected.profile, developers),
       schemaName: 'reviewed_allocation',
       reasoningEffort,
       includeMetadata: true,
@@ -377,7 +447,7 @@ export async function analyzePrd({ prd, knowledge, workloads, useReview = true, 
         }
       },
     })
-    const reviewed = normalizeAllocation(reviewResponse.data)
+    const reviewed = normalizeAllocationForProfile(reviewResponse.data, selected.profile, developers)
     const reviewTrace = { ...reviewResponse.metadata, durationMs: Date.now() - reviewStartedAt, status: 'completed' }
     onProgress?.({
       stage: 'review-complete',

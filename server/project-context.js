@@ -1,4 +1,5 @@
 export const supportedPlatforms = ['共享 Flutter', 'Android', 'iOS', 'macOS', 'Windows', 'Linux']
+export const taskPlatforms = [...supportedPlatforms, '服务端']
 
 export const projectContext = {
   name: 'Agino Flutter 客户端',
@@ -31,4 +32,3 @@ export function formatProjectContext() {
     .join('\n')
   return `项目：${projectContext.name}\n工具链：${projectContext.sdk}\n目标平台：${projectContext.platforms.join('、')}\n架构：${projectContext.architecture}\n\n模块清单：\n${modules}`
 }
-
