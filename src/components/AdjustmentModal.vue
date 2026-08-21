@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { Bot, Check, LoaderCircle, RefreshCw, Sparkles, X } from 'lucide-vue-next'
 import { api } from '../api.js'
+import { eligibleDevelopersForTask } from '../../shared/allocation-profile.js'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -17,7 +18,8 @@ const saving = ref(false)
 const suggesting = ref(false)
 const suggestion = ref(null)
 
-const candidates = computed(() => props.developers.filter((item) => item.name !== props.task.assignee))
+const candidates = computed(() => eligibleDevelopersForTask(props.task, props.developers)
+  .filter((item) => item.name !== props.task.assignee))
 const canSave = computed(() => assignee.value && reason.value.trim().length >= 4 && note.value.trim().length >= 2)
 const reasonOptions = ['平衡团队当前负载', '调整后更符合技能方向', '减少跨模块沟通成本', '接续已有模块上下文']
 

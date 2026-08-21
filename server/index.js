@@ -12,6 +12,7 @@ import { mergeAnalysisProgress } from './model-progress.js'
 import { insertParsedPrds, markPrdAllocationFailed, markPrdAllocationStarted, recoverInterruptedPrdAllocations, toPublicPrd } from './prds.js'
 import { parsePrdUpload } from './prd-upload.js'
 import { reconcileFeatureTasks, removePrdFromFeatureTasks } from './tasks.js'
+import { activeWorkloads, assertEligibleReassignment } from './task-allocation.js'
 import { applyFeatureIdentity, groupPrdsByFeature, mergeFeaturePrds } from '../shared/feature-modules.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -62,15 +63,6 @@ async function storeParsedPrds(parsedPrds) {
     })
   })
   return result
-}
-
-function workloads(state, excludedTaskId = '') {
-  return Object.fromEntries(developers.map((developer) => [
-    developer.name,
-    state.tasks
-      .filter((task) => task.id !== excludedTaskId && task.assignee === developer.name && !['已完成', '已取消'].includes(task.status))
-      .reduce((total, task) => total + Number(task.estimateHours || 0), 0),
-  ]))
 }
 
 function taskDueDate(index) {
@@ -147,7 +139,7 @@ async function runFeatureAnalysis(prdId, options = {}, onProgress = () => {}, si
     const result = await analyzePrd({
       prd: featurePrd,
       knowledge: relatedKnowledge,
-      workloads: workloads(state),
+      workloads: activeWorkloads(state, developers),
       useReview: options.review !== false,
       reasoningEffort,
       onProgress,
@@ -522,6 +514,7 @@ app.post('/api/tasks/:id/reassign', async (request, response) => {
     await updateState((state) => {
       const task = state.tasks.find((item) => item.id === request.params.id)
       if (!task) throw new Error('任务不存在')
+      assertEligibleReassignment(task, assignee, developers)
       const fromAssignee = task.assignee
       if (fromAssignee === assignee) throw new Error('请选择不同的开发者')
       task.assignee = assignee
@@ -545,7 +538,7 @@ app.post('/api/tasks/:id/suggest-reassignment', async (request, response) => {
     const task = state.tasks.find((item) => item.id === request.params.id)
     if (!task) return response.status(404).json({ error: '任务不存在' })
     const knowledge = retrieveKnowledge(state.knowledge, `${task.title} ${task.description} ${task.module}`, 8)
-    response.json(await suggestReassignment({ task, knowledge, workloads: workloads(state, task.id) }))
+    response.json(await suggestReassignment({ task, knowledge, workloads: activeWorkloads(state, developers, task.id) }))
   } catch (error) {
     handleError(error, response)
   }

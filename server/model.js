@@ -3,6 +3,8 @@ import { developers } from './storage.js'
 import { formatKnowledge } from './knowledge.js'
 import { formatProjectContext, supportedPlatforms } from './project-context.js'
 import { modelLifecycleProgress } from './model-progress.js'
+import { eligibleReassignmentCandidates } from './task-allocation.js'
+import { taskDiscipline } from '../shared/allocation-profile.js'
 
 const allocationSchema = {
   type: 'object',
@@ -400,7 +402,12 @@ export async function analyzePrd({ prd, knowledge, workloads, useReview = true, 
 }
 
 export async function suggestReassignment({ task, knowledge, workloads }) {
-  const candidates = developers.filter((item) => item.name !== task.assignee).map((item) => item.name)
+  const candidates = eligibleReassignmentCandidates(task, developers).map((item) => item.name)
+  if (!candidates.length) {
+    const error = new Error('没有可用于重新分配的同类型开发者')
+    error.code = 'MODEL_REASSIGNMENT_UNAVAILABLE'
+    throw error
+  }
   const schema = {
     type: 'object',
     additionalProperties: false,
@@ -410,7 +417,10 @@ export async function suggestReassignment({ task, knowledge, workloads }) {
       reasoning: { type: 'string' },
     },
   }
-  const system = '你是 Agino Flutter 多端任务调度者。针对被拒绝或需要调整的任务，从候选人中推荐一人。平台专属任务优先遵守 Windows/Linux、Android、iOS/macOS 的主责边界；共享实现按所有平台未完成总工时、技能和模块上下文平衡。结合历史原因避免重复冲突。'
+  const discipline = taskDiscipline(task)
+  const system = discipline === 'backend'
+    ? '你是 Agino Go 后端任务调度者。针对被拒绝或需要调整的服务端任务，只能从给定后端候选人中推荐一人。按所有未完成工时、Go 服务技能和模块上下文平衡，并结合历史原因避免重复冲突。'
+    : '你是 Agino Flutter 多端任务调度者。针对被拒绝或需要调整的客户端任务，只能从给定前端候选人中推荐一人。平台专属任务优先遵守 Windows/Linux、Android、iOS/macOS 的主责边界；共享实现按所有平台未完成总工时、技能和模块上下文平衡。结合历史原因避免重复冲突。'
   const user = `工程：${formatProjectContext()}\n\n任务：${JSON.stringify(task)}\n\n团队全平台负载：\n${teamContext(workloads)}\n\n相关历史：\n${formatKnowledge(knowledge)}\n\n候选人：${candidates.join('、')}`
   return requestModel({ model: config.model, system, user, schema, schemaName: 'reassignment' })
 }
