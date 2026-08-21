@@ -180,11 +180,11 @@ export const api = {
       globalThis.clearTimeout(timeout)
     }
   },
-  async analyzePrds(prdIds, { review = true, onEvent } = {}) {
+  async analyzePrds(prdIds, { review = true, allocationProfiles = {}, onEvent } = {}) {
     const response = await fetch('/api/prds/analyze-batch', {
       method: 'POST',
       headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
-      body: JSON.stringify({ prdIds, review }),
+      body: JSON.stringify({ prdIds, review, allocationProfiles }),
     })
     if (!response.ok) throw await responseError(response)
     return readBatchAnalysisStream(response, onEvent)

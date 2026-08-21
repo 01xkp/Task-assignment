@@ -1,10 +1,11 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Bot, CheckCircle2, FileArchive, FileText, FolderOpen, Link2, LoaderCircle, Sparkles, Type, UploadCloud, X } from 'lucide-vue-next'
+import { Bot, CheckCircle2, FileArchive, FileText, FolderOpen, Link2, LoaderCircle, Server, Sparkles, Type, UploadCloud, UsersRound, X } from 'lucide-vue-next'
 import { api } from '../api.js'
 import { addSelectedFiles, folderMarkdownFiles, relativeFilePath, selectedFileKey } from '../import-file-selection.js'
 import { isImportResultScreen } from '../import-modal-state.js'
 import { allocationStatusPresentation } from '../prd-allocation-status.js'
+import { isAllocationProfileComplete, selectedFeatureAllocationState } from '../feature-allocation-state.js'
 import AnalysisProgress from './AnalysisProgress.vue'
 
 const props = defineProps({
@@ -24,6 +25,7 @@ const title = ref('')
 const content = ref('')
 const importResult = ref(null)
 const selectedPrdIds = ref([])
+const allocationProfiles = ref({})
 const busy = ref(false)
 const analyzing = ref(false)
 const dragging = ref(false)
@@ -48,13 +50,34 @@ const canImport = computed(() => {
   if (mode.value === 'text') return content.value.trim().length >= 20
   return false
 })
-const canAnalyze = computed(() => selectedPrdIds.value.length > 0 && Boolean(props.model?.configured))
+const allocationState = computed(() => selectedFeatureAllocationState(
+  props.workspace.prds,
+  selectedPrdIds.value,
+  props.workspace.developers,
+  allocationProfiles.value,
+))
+const selectedFeatureGroups = computed(() => allocationState.value.groups)
+const frontendDevelopers = computed(() => (props.workspace.developers || []).filter((developer) => developer.discipline !== 'backend'))
+const backendDevelopers = computed(() => (props.workspace.developers || []).filter((developer) => developer.discipline === 'backend'))
+const canAnalyze = computed(() => selectedPrdIds.value.length > 0
+  && Boolean(props.model?.configured)
+  && selectedFeatureGroups.value.every((group) => isAllocationProfileComplete(allocationProfiles.value[group.featureKey], props.workspace.developers)))
 const resultItems = computed(() => importResult.value?.imported || [])
 const resultScreen = computed(() => isImportResultScreen(importResult.value, batchSummary.value, { mode: mode.value, analyzing: analyzing.value }))
 
 watch(() => props.initialMode, (value) => {
   if (!busy.value && !analyzing.value) mode.value = value
 })
+
+watch([selectedPrdIds, () => props.workspace.prds], () => {
+  const next = selectedFeatureAllocationState(
+    props.workspace.prds,
+    selectedPrdIds.value,
+    props.workspace.developers,
+    allocationProfiles.value,
+  )
+  allocationProfiles.value = next.profiles
+}, { deep: true, immediate: true })
 
 function startElapsedTimer() {
   elapsedSeconds.value = 0
@@ -117,6 +140,7 @@ function setMode(nextMode) {
   importResult.value = null
   batchSummary.value = null
   selectedPrdIds.value = []
+  allocationProfiles.value = {}
 }
 
 function requestClose() {
@@ -128,6 +152,7 @@ function resetImport() {
   importResult.value = null
   batchSummary.value = null
   selectedPrdIds.value = []
+  allocationProfiles.value = {}
   files.value = []
   archive.value = null
 }
@@ -141,6 +166,13 @@ function togglePrd(prdId) {
 function toggleAllLibrary() {
   const allIds = props.workspace.prds.map((prd) => prd.id)
   selectedPrdIds.value = selectedPrdIds.value.length === allIds.length ? [] : allIds
+}
+
+function allocationProfileError(featureKey) {
+  const profile = allocationProfiles.value[featureKey]
+  if (!profile?.frontendDeveloperIds?.length) return '请至少选择一位前端开发人员'
+  if (profile.includeBackend && !profile.backendOwnerId) return '启用后端任务后请选择后端负责人'
+  return isAllocationProfileComplete(profile, props.workspace.developers) ? '' : '人员选择无效，请重新选择'
 }
 
 async function importPrd() {
@@ -165,12 +197,13 @@ async function analyzeSelected() {
   if (analyzing.value || !canAnalyze.value) return
   analyzing.value = true
   batchSummary.value = null
-  batchProgress.value = { total: selectedPrdIds.value.length, current: 0, currentTitle: '', outcomes: [] }
+  batchProgress.value = { total: selectedFeatureGroups.value.length, current: 0, currentTitle: '', outcomes: [] }
   analysisProgress.value = { stage: 'connecting', percent: 1, message: '正在准备批量分析队列', model: props.model?.model, reasoningEffort: props.model?.reasoningEffort }
   startElapsedTimer()
   try {
     const summary = await api.analyzePrds(selectedPrdIds.value, {
       review: useReview.value,
+      allocationProfiles: allocationProfiles.value,
       onEvent: ({ event, payload }) => {
         if (event === 'batch-item-start') {
           batchProgress.value = { ...batchProgress.value, current: payload.index + 1, total: payload.total, currentTitle: payload.title }
@@ -211,7 +244,7 @@ onBeforeUnmount(stopElapsedTimer)
         <div>
           <span class="modal-kicker"><Sparkles :size="14" /> PRD ANALYSIS</span>
           <h2 id="import-title">{{ batchSummary ? '批量分析完成' : importResult ? '文档导入结果' : mode === 'library' ? '选择已上传 PRD' : '导入产品需求文档' }}</h2>
-          <p>{{ batchSummary ? '可关闭窗口并在工作台查看按 PRD 分组的任务。' : importResult ? '重复正文已跳过，成功导入的文档可以加入分析队列。' : mode === 'library' ? '多选已上传文档，按选择顺序依次分析。' : '支持本地文件、文件夹、ZIP、在线文档和直接粘贴正文。' }}</p>
+          <p>{{ batchSummary ? '可关闭窗口并在工作台查看按功能模块分组的任务。' : importResult ? '重复正文已跳过，成功导入的文档可以加入分析队列。' : mode === 'library' ? '多选已上传文档，按功能模块设置人员后依次分析。' : '支持本地文件、文件夹、ZIP、在线文档和直接粘贴正文。' }}</p>
         </div>
         <button class="icon-button" title="关闭" :disabled="analyzing" @click="requestClose"><X :size="20" /></button>
       </header>
@@ -275,6 +308,20 @@ onBeforeUnmount(stopElapsedTimer)
         </div>
 
         <div v-if="mode === 'library'" class="modal-body analysis-options">
+          <div v-if="selectedFeatureGroups.length" class="feature-allocation-list">
+            <section v-for="group in selectedFeatureGroups" :key="group.featureKey" class="feature-allocation-editor">
+              <header class="feature-allocation-editor__header"><div><strong>{{ group.featureName }}</strong><small>{{ group.prds.length }} 份来源文档</small></div><span>{{ group.featureKey.startsWith('folder:') ? '合并功能' : '独立功能' }}</span></header>
+              <fieldset class="feature-allocation-editor__field">
+                <legend><UsersRound :size="15" />可用前端人员</legend>
+                <div class="feature-allocation-editor__members">
+                  <label v-for="developer in frontendDevelopers" :key="developer.id"><input v-model="allocationProfiles[group.featureKey].frontendDeveloperIds" type="checkbox" :value="developer.id" :disabled="analyzing" /><span class="avatar" :style="{ background: developer.color }">{{ developer.initials }}</span><span>{{ developer.name }}</span></label>
+                </div>
+              </fieldset>
+              <label class="switch-row feature-allocation-editor__switch"><div><Server :size="18" /><span><strong>包含后端任务</strong><small>该功能的服务端任务由一位后端人员主责</small></span></div><input v-model="allocationProfiles[group.featureKey].includeBackend" type="checkbox" :disabled="analyzing" /><span class="switch-control"></span></label>
+              <label v-if="allocationProfiles[group.featureKey].includeBackend" class="feature-allocation-editor__backend"><span>后端负责人</span><select v-model="allocationProfiles[group.featureKey].backendOwnerId" :disabled="analyzing"><option value="">请选择</option><option v-for="developer in backendDevelopers" :key="developer.id" :value="developer.id">{{ developer.name }} · {{ developer.role }}</option></select></label>
+              <p v-if="allocationProfileError(group.featureKey)" class="feature-allocation-editor__error">{{ allocationProfileError(group.featureKey) }}</p>
+            </section>
+          </div>
           <label class="switch-row">
             <div><Bot :size="18" /><span><strong>启用方案复核</strong><small>检查任务遗漏、负载与依赖闭环</small></span></div>
             <input v-model="useReview" type="checkbox" :disabled="analyzing" /><span class="switch-control"></span>
@@ -283,7 +330,7 @@ onBeforeUnmount(stopElapsedTimer)
         </div>
 
         <footer class="modal-footer">
-          <span>{{ mode === 'library' ? `已选择 ${selectedPrdIds.length} 份 PRD` : '文档只保存在本地知识目录' }}</span>
+          <span>{{ mode === 'library' ? `已选择 ${selectedPrdIds.length} 份 PRD · ${selectedFeatureGroups.length} 个功能` : '文档只保存在本地知识目录' }}</span>
           <div><button class="secondary-button" @click="requestClose">取消</button><button v-if="mode === 'library'" class="primary-button" :disabled="!canAnalyze || analyzing" @click="analyzeSelected"><LoaderCircle v-if="analyzing" class="spin" :size="17" /><Sparkles v-else :size="17" />开始分析</button><button v-else class="primary-button" :disabled="!canImport || busy" @click="importPrd"><LoaderCircle v-if="busy" class="spin" :size="17" /><UploadCloud v-else :size="17" />{{ busy ? '正在读取' : '导入文档' }}</button></div>
         </footer>
       </template>

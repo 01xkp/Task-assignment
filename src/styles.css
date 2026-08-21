@@ -2071,6 +2071,66 @@ button:disabled {
 .selection-empty { padding: 36px 8px; color: var(--muted-2); font-size: 12px; text-align: center; }
 .analysis-options { padding-top: 0; }
 
+.feature-allocation-list {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.feature-allocation-editor {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.feature-allocation-editor__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.feature-allocation-editor__header > div { display: grid; gap: 3px; min-width: 0; }
+.feature-allocation-editor__header strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.feature-allocation-editor__header small { color: var(--muted-2); font-size: 10px; }
+.feature-allocation-editor__header > span { flex: 0 0 auto; color: var(--green-dark); font-size: 10px; }
+
+.feature-allocation-editor__field {
+  min-width: 0;
+  margin: 12px 0;
+  padding: 0;
+  border: 0;
+}
+
+.feature-allocation-editor__field legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: #49544f;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.feature-allocation-editor__field legend svg { color: var(--green); }
+.feature-allocation-editor__members { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.feature-allocation-editor__members label { display: flex; min-width: 0; align-items: center; gap: 7px; padding: 7px 8px; border: 1px solid var(--line); border-radius: 5px; cursor: pointer; }
+.feature-allocation-editor__members input { width: 14px; height: 14px; margin: 0; flex: 0 0 auto; accent-color: var(--green); }
+.feature-allocation-editor__members .avatar { width: 19px; height: 19px; flex: 0 0 auto; font-size: 9px; }
+.feature-allocation-editor__members label > span:last-child { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.feature-allocation-editor__switch { margin-bottom: 10px; }
+
+.feature-allocation-editor__backend {
+  display: grid;
+  gap: 6px;
+  color: #49544f;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.feature-allocation-editor__backend select { height: 34px; padding: 0 9px; border: 1px solid var(--line); border-radius: 5px; color: var(--ink); background: #fff; font: inherit; font-weight: 500; }
+.feature-allocation-editor__backend select:focus { border-color: var(--green); outline: 2px solid rgba(15, 138, 106, .16); outline-offset: 1px; }
+.feature-allocation-editor__error { margin: 8px 0 0; color: var(--coral); font-size: 10px; }
+
 .batch-progress-summary {
   display: grid;
   gap: 6px;
@@ -2782,6 +2842,7 @@ button:disabled {
   .import-tabs { grid-template-columns: repeat(2, 1fr); padding: 0 12px; }
   .import-tabs button { font-size: 12px; }
   .import-source-actions { grid-template-columns: 1fr; }
+  .feature-allocation-editor__members { grid-template-columns: 1fr; }
   .modal-footer { align-items: flex-start; flex-direction: column; padding: 11px 16px; }
   .modal-footer > div { width: 100%; }
   .modal-footer > div button { flex: 1; }
