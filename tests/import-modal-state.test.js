@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { isImportResultScreen } from '../src/import-modal-state.js'
+import { isImportResultScreen, shouldShowFeatureAllocation } from '../src/import-modal-state.js'
 
 test('shows the result screen after analyzing selected library PRDs', () => {
   assert.equal(isImportResultScreen(null, { succeeded: [], failed: [] }), true)
@@ -13,4 +13,14 @@ test('shows the progress screen while selected library PRDs are analyzing', () =
 
 test('keeps the import screen open before importing or analyzing', () => {
   assert.equal(isImportResultScreen(null, null), false)
+})
+
+test('shows feature allocation after a local import succeeds', () => {
+  assert.equal(shouldShowFeatureAllocation('file', { imported: [{ id: 'prd-1' }] }, { resultScreen: true }), true)
+  assert.equal(shouldShowFeatureAllocation('library', null), true)
+  assert.equal(shouldShowFeatureAllocation('file', { imported: [] }), false)
+})
+
+test('hides feature allocation while a selected library batch is showing results', () => {
+  assert.equal(shouldShowFeatureAllocation('library', null, { resultScreen: true }), false)
 })

@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Bot, CheckCircle2, FileArchive, FileText, FolderOpen, Link2, LoaderCircle, Server, Sparkles, Type, UploadCloud, UsersRound, X } from 'lucide-vue-next'
 import { api } from '../api.js'
 import { addSelectedFiles, folderMarkdownFiles, relativeFilePath, selectedFileKey } from '../import-file-selection.js'
-import { isImportResultScreen } from '../import-modal-state.js'
+import { isImportResultScreen, shouldShowFeatureAllocation } from '../import-modal-state.js'
 import { allocationStatusPresentation } from '../prd-allocation-status.js'
 import { isAllocationProfileComplete, selectedFeatureAllocationState } from '../feature-allocation-state.js'
 import AnalysisProgress from './AnalysisProgress.vue'
@@ -64,6 +64,7 @@ const canAnalyze = computed(() => selectedPrdIds.value.length > 0
   && selectedFeatureGroups.value.every((group) => isAllocationProfileComplete(allocationProfiles.value[group.featureKey], props.workspace.developers)))
 const resultItems = computed(() => importResult.value?.imported || [])
 const resultScreen = computed(() => isImportResultScreen(importResult.value, batchSummary.value, { mode: mode.value, analyzing: analyzing.value }))
+const showFeatureAllocation = computed(() => shouldShowFeatureAllocation(mode.value, importResult.value, { resultScreen: resultScreen.value }))
 
 watch(() => props.initialMode, (value) => {
   if (!busy.value && !analyzing.value) mode.value = value
@@ -307,32 +308,6 @@ onBeforeUnmount(stopElapsedTimer)
           </div>
         </div>
 
-        <div v-if="mode === 'library'" class="modal-body analysis-options">
-          <div v-if="selectedFeatureGroups.length" class="feature-allocation-list">
-            <section v-for="group in selectedFeatureGroups" :key="group.featureKey" class="feature-allocation-editor">
-              <header class="feature-allocation-editor__header"><div><strong>{{ group.featureName }}</strong><small>{{ group.prds.length }} 份来源文档</small></div><span>{{ group.featureKey.startsWith('folder:') ? '合并功能' : '独立功能' }}</span></header>
-              <fieldset class="feature-allocation-editor__field">
-                <legend><UsersRound :size="15" />可用前端人员</legend>
-                <div class="feature-allocation-editor__members">
-                  <label v-for="developer in frontendDevelopers" :key="developer.id"><input v-model="allocationProfiles[group.featureKey].frontendDeveloperIds" type="checkbox" :value="developer.id" :disabled="analyzing" /><span class="avatar" :style="{ background: developer.color }">{{ developer.initials }}</span><span>{{ developer.name }}</span></label>
-                </div>
-              </fieldset>
-              <label class="switch-row feature-allocation-editor__switch"><div><Server :size="18" /><span><strong>包含后端任务</strong><small>该功能的服务端任务由一位后端人员主责</small></span></div><input v-model="allocationProfiles[group.featureKey].includeBackend" type="checkbox" :disabled="analyzing" /><span class="switch-control"></span></label>
-              <label v-if="allocationProfiles[group.featureKey].includeBackend" class="feature-allocation-editor__backend"><span>后端负责人</span><select v-model="allocationProfiles[group.featureKey].backendOwnerId" :disabled="analyzing"><option value="">请选择</option><option v-for="developer in backendDevelopers" :key="developer.id" :value="developer.id">{{ developer.name }} · {{ developer.role }}</option></select></label>
-              <p v-if="allocationProfileError(group.featureKey)" class="feature-allocation-editor__error">{{ allocationProfileError(group.featureKey) }}</p>
-            </section>
-          </div>
-          <label class="switch-row">
-            <div><Bot :size="18" /><span><strong>启用方案复核</strong><small>检查任务遗漏、负载与依赖闭环</small></span></div>
-            <input v-model="useReview" type="checkbox" :disabled="analyzing" /><span class="switch-control"></span>
-          </label>
-          <div v-if="!model?.configured" class="config-warning"><span></span><div><strong>模型密钥尚未配置</strong><p>在项目根目录创建 .env.local 并设置 OPENAI_API_KEY 后即可分析。</p></div></div>
-        </div>
-
-        <footer class="modal-footer">
-          <span>{{ mode === 'library' ? `已选择 ${selectedPrdIds.length} 份 PRD · ${selectedFeatureGroups.length} 个功能` : '文档只保存在本地知识目录' }}</span>
-          <div><button class="secondary-button" @click="requestClose">取消</button><button v-if="mode === 'library'" class="primary-button" :disabled="!canAnalyze || analyzing" @click="analyzeSelected"><LoaderCircle v-if="analyzing" class="spin" :size="17" /><Sparkles v-else :size="17" />开始分析</button><button v-else class="primary-button" :disabled="!canImport || busy" @click="importPrd"><LoaderCircle v-if="busy" class="spin" :size="17" /><UploadCloud v-else :size="17" />{{ busy ? '正在读取' : '导入文档' }}</button></div>
-        </footer>
       </template>
 
       <template v-else>
@@ -344,7 +319,6 @@ onBeforeUnmount(stopElapsedTimer)
               <div v-for="duplicate in importResult.duplicates" :key="`${duplicate.sourceLabel}:${duplicate.existingPrdId}`" class="import-result-row result-tone--duplicate"><span></span><FileText :size="17" /><span><strong>{{ duplicate.sourceLabel }}</strong><small>正文重复，已保留「{{ duplicate.existingTitle }}」</small></span></div>
               <div v-for="failed in importResult.failed" :key="`${failed.sourceLabel}:${failed.error}`" class="import-result-row result-tone--error"><span></span><X :size="17" /><span><strong>{{ failed.sourceLabel }}</strong><small>{{ failed.error }}</small></span></div>
             </div>
-            <label class="switch-row"><div><Bot :size="18" /><span><strong>启用方案复核</strong><small>检查任务遗漏、负载与依赖闭环</small></span></div><input v-model="useReview" type="checkbox" :disabled="analyzing" /><span class="switch-control"></span></label>
           </template>
           <div v-else-if="batchSummary" class="import-success"><div class="success-icon"><CheckCircle2 :size="28" /></div><div><span>批量分析完成</span><h3>成功 {{ batchSummary.succeeded.length }} 份 · 失败 {{ batchSummary.failed.length }} 份</h3><p>任务已按 PRD 和任务类别更新到工作台。</p></div></div>
           <div v-else class="import-success"><div class="success-icon"><LoaderCircle class="spin" :size="28" /></div><div><span>正在批量分析</span><h3>第 {{ batchProgress.current }} / {{ batchProgress.total }} 份 PRD</h3><p>{{ batchProgress.currentTitle || '正在准备分析队列。' }}</p></div></div>
@@ -352,8 +326,40 @@ onBeforeUnmount(stopElapsedTimer)
           <div v-if="batchSummary" class="batch-progress-summary"><strong>分析完成：{{ batchSummary.succeeded.length }} 份成功，{{ batchSummary.failed.length }} 份失败</strong><span v-for="outcome in batchProgress.outcomes" :key="`${outcome.event}:${outcome.prdId}`" :class="{ failed: outcome.event === 'batch-item-error' }">{{ outcome.title || outcome.prdId }} · {{ outcome.event === 'batch-item-error' ? outcome.error : `已生成 ${outcome.result.tasks.length} 个任务` }}</span></div>
           <div v-if="!model?.configured" class="config-warning"><span></span><div><strong>模型密钥尚未配置</strong><p>在项目根目录创建 .env.local 并设置 OPENAI_API_KEY 后即可分析。</p></div></div>
         </div>
-        <footer class="modal-footer"><button class="text-action" :disabled="analyzing" @click="resetImport">{{ importResult ? '重新导入' : '重新选择' }}</button><div><button class="secondary-button" :disabled="analyzing" @click="requestClose">关闭</button><button v-if="importResult && !batchSummary" class="primary-button" :disabled="!canAnalyze || analyzing" @click="analyzeSelected"><LoaderCircle v-if="analyzing" class="spin" :size="17" /><Sparkles v-else :size="17" />{{ analyzing ? `${analysisProgress?.percent || 0}% 分析中` : `分析 ${selectedPrdIds.length} 份 PRD` }}</button></div></footer>
       </template>
+
+      <div v-if="showFeatureAllocation" class="modal-body analysis-options">
+        <div v-if="selectedFeatureGroups.length" class="feature-allocation-list">
+          <section v-for="group in selectedFeatureGroups" :key="group.featureKey" class="feature-allocation-editor">
+            <header class="feature-allocation-editor__header"><div><strong>{{ group.featureName }}</strong><small>{{ group.prds.length }} 份来源文档</small></div><span>{{ group.featureKey.startsWith('folder:') ? '合并功能' : '独立功能' }}</span></header>
+            <fieldset class="feature-allocation-editor__field">
+              <legend><UsersRound :size="15" />可用前端人员</legend>
+              <div class="feature-allocation-editor__members">
+                <label v-for="developer in frontendDevelopers" :key="developer.id"><input v-model="allocationProfiles[group.featureKey].frontendDeveloperIds" type="checkbox" :value="developer.id" :disabled="analyzing" /><span class="avatar" :style="{ background: developer.color }">{{ developer.initials }}</span><span>{{ developer.name }}</span></label>
+              </div>
+            </fieldset>
+            <label class="switch-row feature-allocation-editor__switch"><div><Server :size="18" /><span><strong>包含后端任务</strong><small>该功能的服务端任务由一位后端人员主责</small></span></div><input v-model="allocationProfiles[group.featureKey].includeBackend" type="checkbox" :disabled="analyzing" /><span class="switch-control"></span></label>
+            <label v-if="allocationProfiles[group.featureKey].includeBackend" class="feature-allocation-editor__backend"><span>后端负责人</span><select v-model="allocationProfiles[group.featureKey].backendOwnerId" :disabled="analyzing"><option value="">请选择</option><option v-for="developer in backendDevelopers" :key="developer.id" :value="developer.id">{{ developer.name }} · {{ developer.role }}</option></select></label>
+            <p v-if="allocationProfileError(group.featureKey)" class="feature-allocation-editor__error">{{ allocationProfileError(group.featureKey) }}</p>
+          </section>
+        </div>
+        <label class="switch-row">
+          <div><Bot :size="18" /><span><strong>启用方案复核</strong><small>检查任务遗漏、负载与依赖闭环</small></span></div>
+          <input v-model="useReview" type="checkbox" :disabled="analyzing" /><span class="switch-control"></span>
+        </label>
+        <div v-if="!model?.configured" class="config-warning"><span></span><div><strong>模型密钥尚未配置</strong><p>在项目根目录创建 .env.local 并设置 OPENAI_API_KEY 后即可分析。</p></div></div>
+      </div>
+
+      <footer class="modal-footer">
+        <template v-if="!resultScreen">
+          <span>{{ mode === 'library' ? `已选择 ${selectedPrdIds.length} 份 PRD · ${selectedFeatureGroups.length} 个功能` : '文档只保存在本地知识目录' }}</span>
+          <div><button class="secondary-button" @click="requestClose">取消</button><button v-if="mode === 'library'" class="primary-button" :disabled="!canAnalyze || analyzing" @click="analyzeSelected"><LoaderCircle v-if="analyzing" class="spin" :size="17" /><Sparkles v-else :size="17" />开始分析</button><button v-else class="primary-button" :disabled="!canImport || busy" @click="importPrd"><LoaderCircle v-if="busy" class="spin" :size="17" /><UploadCloud v-else :size="17" />{{ busy ? '正在读取' : '导入文档' }}</button></div>
+        </template>
+        <template v-else>
+          <button class="text-action" :disabled="analyzing" @click="resetImport">{{ importResult ? '重新导入' : '重新选择' }}</button>
+          <div><button class="secondary-button" :disabled="analyzing" @click="requestClose">关闭</button><button v-if="importResult && !batchSummary" class="primary-button" :disabled="!canAnalyze || analyzing" @click="analyzeSelected"><LoaderCircle v-if="analyzing" class="spin" :size="17" /><Sparkles v-else :size="17" />{{ analyzing ? `${analysisProgress?.percent || 0}% 分析中` : `分析 ${selectedPrdIds.length} 份 PRD` }}</button></div>
+        </template>
+      </footer>
     </section>
   </div>
 </template>
