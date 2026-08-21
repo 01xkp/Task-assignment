@@ -15,6 +15,12 @@ const frontendCandidatesProfile = {
   backendOwnerId: '',
 }
 
+const backendOnlyProfile = {
+  frontendDeveloperIds: [],
+  includeBackend: true,
+  backendOwnerId: 'shu-jie',
+}
+
 function frontendTask(overrides = {}) {
   return {
     title: '接入邀请码页面',
@@ -55,6 +61,26 @@ test('omits the backend task branch when a feature disables backend work', () =>
   }, developers)
 
   assert.equal(schema.properties.tasks.items.oneOf.length, 1)
+})
+
+test('uses only the backend schema and discards frontend tasks when no frontend candidate is selected', () => {
+  const schema = createAllocationSchema(backendOnlyProfile, developers)
+  const result = normalizeAllocationForProfile({
+    summary: '邀请码服务端实现',
+    tasks: [
+      frontendTask(),
+      {
+        title: '新增邀请码接口', description: '写入邀请码', module: '邀请', modulePath: 'internal/modules/invite',
+        workType: '后端实现', platforms: ['服务端'], deliveryType: 'backend', priority: '高', estimateHours: 8,
+        suggestedAssignee: '陈远志', reasoning: '错误候选人', acceptanceCriteria: ['接口可调用'], dependencies: [],
+      },
+    ],
+  }, backendOnlyProfile, developers)
+
+  assert.equal(schema.properties.tasks.items.oneOf.length, 1)
+  assert.deepEqual(schema.properties.tasks.items.oneOf[0].properties.suggestedAssignee.enum, ['舒杰'])
+  assert.match(buildAllocationInstructions(backendOnlyProfile, developers), /不得生成前端任务/)
+  assert.deepEqual(result.tasks.map((task) => [task.deliveryType, task.suggestedAssignee]), [['backend', '舒杰']])
 })
 
 test('keeps valid task-level assignments across selected frontend candidates', () => {

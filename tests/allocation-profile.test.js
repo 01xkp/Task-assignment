@@ -47,6 +47,26 @@ test('keeps a single selected backend owner for a feature', () => {
   })
 })
 
+test('allows backend-only analysis without a frontend candidate', () => {
+  assert.deepEqual(normalizeAllocationProfile({
+    frontendDeveloperIds: [],
+    includeBackend: true,
+    backendOwnerId: 'shu-jie',
+  }, developers), {
+    frontendDeveloperIds: [],
+    includeBackend: true,
+    backendOwnerId: 'shu-jie',
+  })
+})
+
+test('rejects an allocation profile with no selected developers', () => {
+  assert.throws(() => normalizeAllocationProfile({
+    frontendDeveloperIds: [],
+    includeBackend: false,
+    backendOwnerId: '',
+  }, developers), { code: 'ALLOCATION_PROFILE_INVALID' })
+})
+
 test('rejects backend ownership by a frontend member', () => {
   assert.throws(() => normalizeAllocationProfile({
     frontendDeveloperIds: ['zeng-yuqiu'],

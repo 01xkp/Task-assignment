@@ -48,13 +48,16 @@ function taskSchema(properties) {
 
 export function createAllocationSchema(profile, team = developers) {
   const selected = allocationTeam(profile, team)
-  const frontend = taskSchema(commonTaskProperties({
-    deliveryType: 'frontend',
-    workType: { type: 'string', enum: frontendWorkTypes },
-    platforms: { type: 'array', minItems: 1, uniqueItems: true, items: { type: 'string', enum: supportedPlatforms } },
-    assignees: selected.frontend.map((developer) => developer.name),
-  }))
-  const branches = [frontend]
+  const branches = []
+
+  if (selected.frontend.length) {
+    branches.push(taskSchema(commonTaskProperties({
+      deliveryType: 'frontend',
+      workType: { type: 'string', enum: frontendWorkTypes },
+      platforms: { type: 'array', minItems: 1, uniqueItems: true, items: { type: 'string', enum: supportedPlatforms } },
+      assignees: selected.frontend.map((developer) => developer.name),
+    })))
+  }
 
   if (selected.backend) {
     branches.push(taskSchema(commonTaskProperties({
@@ -306,6 +309,7 @@ export function normalizeAllocationForProfile(result, profile, team = developers
     tasks: (Array.isArray(result?.tasks) ? result.tasks : []).flatMap((task) => {
       const isBackend = taskDiscipline(task) === 'backend'
       if (isBackend && !selected.backend) return []
+      if (!isBackend && !selected.frontend.length) return []
       const fields = normalizeTaskFields(task)
       if (isBackend) {
         return [{
@@ -333,12 +337,15 @@ export function normalizeAllocationForProfile(result, profile, team = developers
 export function buildAllocationInstructions(profile, team = developers) {
   const selected = allocationTeam(profile, team)
   const frontendNames = selected.frontend.map((developer) => developer.name).join('、')
+  const frontendInstruction = selected.frontend.length
+    ? `本功能可分配的前端候选人员只有：${frontendNames}。每个前端任务的 suggestedAssignee 必须从这些候选人员中选择，不得使用候选池外的人员。`
+    : '未选择前端候选人员，不得生成前端任务或客户端平台任务。'
   const backendInstruction = selected.backend
     ? `后端任务已启用，唯一后端主责人为 ${selected.backend.name}。后端任务只描述服务端 API、handler/service/repository、数据库迁移、事务或接口测试；平台固定为服务端，工作类型固定为后端实现。`
     : '后端任务未启用，不得生成后端实现、服务端平台、后端负责人、产品、设计、发布管理或纯会议任务。'
   return `你是 Agino Flutter 多端客户端与 Go 服务端协作的资深研发项目经理。
 
-本功能可分配的前端候选人员只有：${frontendNames}。每个前端任务的 suggestedAssignee 必须从这些候选人员中选择，不得使用候选池外的人员。${backendInstruction}
+${frontendInstruction}${backendInstruction}
 
 拆分规则：
 1. 先识别受影响的真实业务模块和代码目录，再判断 Android、iOS、macOS、Windows、Linux 的影响面；不得因为项目支持五个平台就机械地为所有平台生成任务。
@@ -355,7 +362,11 @@ export async function analyzePrd({ prd, knowledge, workloads, allocationProfile,
   const selected = allocationTeam(allocationProfile, developers)
   const allowedTeam = [...selected.frontend, ...(selected.backend ? [selected.backend] : [])]
   const system = buildAllocationInstructions(selected.profile, developers)
-  const user = `工程上下文：\n${formatProjectContext()}\n\n允许分配的团队与全平台负载：\n${teamContext(workloads, allowedTeam)}\n\n历史调整知识：\n${formatKnowledge(knowledge)}\n\n功能模块：${prd.featureName || prd.title}\n来源 PRD 标题：${prd.title}\nPRD 正文：\n${prd.content.slice(0, 50000)}\n\n输出可独立交付的前端任务，以及仅在已启用时输出的后端任务。依赖项填写所依赖任务的标题，summary 说明影响面和分配后的总工时。`
+  const outputScope = selected.frontend.length
+    ? '输出可独立交付的前端任务'
+    : '不要输出前端任务'
+  const backendScope = selected.backend ? '，并输出已启用的后端任务' : ''
+  const user = `工程上下文：\n${formatProjectContext()}\n\n允许分配的团队与全平台负载：\n${teamContext(workloads, allowedTeam)}\n\n历史调整知识：\n${formatKnowledge(knowledge)}\n\n功能模块：${prd.featureName || prd.title}\n来源 PRD 标题：${prd.title}\nPRD 正文：\n${prd.content.slice(0, 50000)}\n\n${outputScope}${backendScope}。依赖项填写所依赖任务的标题，summary 说明影响面和分配后的总工时。`
   onProgress?.({ stage: 'draft', percent: 14, message: `${model} 正在以 ${reasoningEffort} 强度拆解需求`, model, reasoningEffort })
   const draftStartedAt = Date.now()
   const draftResponse = await requestModel({

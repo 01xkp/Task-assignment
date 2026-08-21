@@ -172,8 +172,8 @@ function toggleAllLibrary() {
 
 function allocationProfileError(featureKey) {
   const profile = allocationProfiles.value[featureKey]
-  if (!profile?.frontendDeveloperIds?.length) return '请至少选择一位前端开发人员'
   if (profile.includeBackend && !profile.backendOwnerId) return '启用后端任务后请选择后端负责人'
+  if (!profile?.frontendDeveloperIds?.length && !profile?.includeBackend) return '请至少选择一位开发人员，或启用后端任务并选择负责人'
   return isAllocationProfileComplete(profile, props.workspace.developers) ? '' : '人员选择无效，请重新选择'
 }
 

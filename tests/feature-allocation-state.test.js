@@ -50,3 +50,16 @@ test('requires a backend owner when backend tasks are enabled', () => {
     backendOwnerId: '',
   }, developers), false)
 })
+
+test('accepts a backend-only profile but rejects an empty personnel selection', () => {
+  assert.equal(isAllocationProfileComplete({
+    frontendDeveloperIds: [],
+    includeBackend: true,
+    backendOwnerId: 'chen-yuanzhi',
+  }, developers), true)
+  assert.equal(isAllocationProfileComplete({
+    frontendDeveloperIds: [],
+    includeBackend: false,
+    backendOwnerId: '',
+  }, developers), false)
+})

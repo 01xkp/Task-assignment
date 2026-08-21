@@ -32,14 +32,17 @@ export function normalizeAllocationProfile(value, developers) {
   const includeBackend = value.includeBackend === true
   const backendOwnerId = String(value.backendOwnerId || '').trim()
 
-  if (!frontendDeveloperIds.length || frontendDeveloperIds.some((id) => !frontendIds.has(id))) {
-    throw invalidProfile('请选择至少一位有效的前端开发人员')
+  if (frontendDeveloperIds.some((id) => !frontendIds.has(id))) {
+    throw invalidProfile('前端开发人员选择无效')
   }
   if (new Set(frontendDeveloperIds).size !== frontendDeveloperIds.length) {
     throw invalidProfile('前端开发人员不能重复选择')
   }
   if (includeBackend && !backendIds.has(backendOwnerId)) {
     throw invalidProfile('启用后端任务时必须选择有效的后端负责人')
+  }
+  if (!frontendDeveloperIds.length && !includeBackend) {
+    throw invalidProfile('请至少选择一位开发人员，或启用后端任务并选择负责人')
   }
 
   return {
