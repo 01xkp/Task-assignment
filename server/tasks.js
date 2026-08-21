@@ -9,6 +9,7 @@ export function taskFingerprint(task) {
     normalizeTaskPart(task.title),
     normalizeTaskPart(task.module),
     normalizeTaskPart(task.modulePath),
+    normalizeTaskPart(task.deliveryType),
     normalizeTaskPart(task.workType),
     [...(task.platforms || [])].map(normalizeTaskPart).sort(),
   ])

@@ -14,6 +14,7 @@ import { parsePrdUpload } from './prd-upload.js'
 import { reconcileFeatureTasks, removePrdFromFeatureTasks } from './tasks.js'
 import { activeWorkloads, assertEligibleReassignment } from './task-allocation.js'
 import { applyFeatureIdentity, groupPrdsByFeature, mergeFeaturePrds } from '../shared/feature-modules.js'
+import { normalizeAllocationProfile, profilesForFeatureGroups } from '../shared/allocation-profile.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -104,6 +105,10 @@ function featureGroupForPrd(state, prdId) {
 async function runFeatureAnalysis(prdId, options = {}, onProgress = () => {}, signal) {
   const initialState = await readState()
   let featureGroup = featureGroupForPrd(initialState, prdId)
+  const allocationProfile = normalizeAllocationProfile(
+    options.allocationProfile ?? options.allocationProfiles?.[featureGroup.featureKey],
+    developers,
+  )
   if (activeFeatureAnalyses.has(featureGroup.featureKey)) {
     const error = new Error('该功能模块正在分析中，请等待当前分析完成')
     error.code = 'ANALYSIS_IN_PROGRESS'
@@ -140,6 +145,7 @@ async function runFeatureAnalysis(prdId, options = {}, onProgress = () => {}, si
       prd: featurePrd,
       knowledge: relatedKnowledge,
       workloads: activeWorkloads(state, developers),
+      allocationProfile,
       useReview: options.review !== false,
       reasoningEffort,
       onProgress,
@@ -176,6 +182,7 @@ async function runFeatureAnalysis(prdId, options = {}, onProgress = () => {}, si
         Object.assign(storedPrd, {
           featureKey: featureGroup.featureKey,
           featureName: featureGroup.featureName,
+          allocationProfile,
           analyzedAt: createdAt,
           analysisFinishedAt: createdAt,
           analysisError: '',
@@ -211,6 +218,7 @@ async function runFeatureAnalysis(prdId, options = {}, onProgress = () => {}, si
       featureKey: featureGroup.featureKey,
       featureName: featureGroup.featureName,
       prdIds: featureGroup.prdIds,
+      allocationProfile,
       model: actualModel,
       requestedModel: configuredModel,
       reasoningEffort,
@@ -374,6 +382,19 @@ app.post('/api/prds/analyze-batch', async (request, response) => {
   const prdIds = uniquePrdIds(request.body.prdIds)
   if (!prdIds.length) return handleError(new Error('请至少选择一份 PRD'), response)
 
+  let featureGroups
+  let allocationProfiles
+  try {
+    const state = await readState()
+    featureGroups = featureGroupsForPrdIds(state.prds, prdIds).map((selectedGroup) => {
+      const sourcePrd = selectedGroup.prds[0]
+      return featureGroupForPrd(state, sourcePrd.id)
+    })
+    allocationProfiles = profilesForFeatureGroups(featureGroups, request.body.allocationProfiles, developers)
+  } catch (error) {
+    return handleError(error, response)
+  }
+
   response.status(200)
   response.set({
     'Cache-Control': 'no-cache, no-transform',
@@ -392,12 +413,6 @@ app.post('/api/prds/analyze-batch', async (request, response) => {
   }
   request.once('aborted', abortOnDisconnect)
   response.once('close', abortOnDisconnect)
-
-  const state = await readState()
-  const featureGroups = featureGroupsForPrdIds(state.prds, prdIds).map((selectedGroup) => {
-    const sourcePrd = selectedGroup.prds[0]
-    return featureGroupForPrd(state, sourcePrd.id)
-  })
 
   writeSse(response, 'batch-start', { total: featureGroups.length, prdIds, featureGroups: featureGroups.map(({ featureKey, featureName, prdIds: sourcePrdIds }) => ({ featureKey, featureName, prdIds: sourcePrdIds })) })
   const batch = await runSequentialFeatureAnalysis(featureGroups, async (featureGroup) => {
@@ -430,7 +445,10 @@ app.post('/api/prds/analyze-batch', async (request, response) => {
       })
     }, 10000)
     try {
-      const result = await runFeatureAnalysis(item.prdId, request.body, (progress) => {
+      const result = await runFeatureAnalysis(item.prdId, {
+        review: request.body.review,
+        allocationProfile: allocationProfiles[featureGroup.featureKey],
+      }, (progress) => {
         lastItemProgress = { ...lastItemProgress, ...progress }
         writeSse(response, 'batch-progress', { ...item, progress: lastItemProgress })
       }, activeController.signal)

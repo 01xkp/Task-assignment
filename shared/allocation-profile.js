@@ -45,6 +45,19 @@ export function normalizeAllocationProfile(value, developers) {
   return { frontendDeveloperIds, includeBackend, backendOwnerId: includeBackend ? backendOwnerId : '' }
 }
 
+export function profilesForFeatureGroups(groups, rawProfiles, developers) {
+  const profiles = {}
+  for (const group of Array.isArray(groups) ? groups : []) {
+    const featureKey = String(group?.featureKey || '').trim()
+    if (!featureKey || Object.hasOwn(profiles, featureKey)) continue
+    const value = rawProfiles && Object.hasOwn(rawProfiles, featureKey)
+      ? rawProfiles[featureKey]
+      : undefined
+    profiles[featureKey] = normalizeAllocationProfile(value, developers)
+  }
+  return profiles
+}
+
 export function taskDiscipline(task) {
   return task?.deliveryType === 'backend' || task?.workType === '后端实现' ? 'backend' : 'frontend'
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { reconcileFeatureTasks, reconcilePrdTasks, removePrdFromFeatureTasks } from '../server/tasks.js'
+import { reconcileFeatureTasks, reconcilePrdTasks, removePrdFromFeatureTasks, taskFingerprint } from '../server/tasks.js'
 
 const task = (overrides = {}) => ({
   id: 'task-1',
@@ -97,4 +97,11 @@ test('keeps terminal feature tasks when a later analysis adds a source PRD', () 
   assert.equal(removePrdFromFeatureTasks(state, 'prd-b'), 0)
   assert.equal(state.tasks.length, 1)
   assert.equal(removePrdFromFeatureTasks(state, 'prd-c'), 1)
+})
+
+test('includes delivery type in a task fingerprint', () => {
+  const frontend = task({ deliveryType: 'frontend' })
+  const backend = task({ deliveryType: 'backend' })
+
+  assert.notEqual(taskFingerprint(frontend), taskFingerprint(backend))
 })

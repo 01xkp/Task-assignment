@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { developers } from '../server/storage.js'
-import { eligibleDevelopersForTask, normalizeAllocationProfile, taskDiscipline } from '../shared/allocation-profile.js'
+import { eligibleDevelopersForTask, normalizeAllocationProfile, profilesForFeatureGroups, taskDiscipline } from '../shared/allocation-profile.js'
 
 test('defaults legacy PRDs to every frontend developer and no backend work', () => {
   assert.deepEqual(normalizeAllocationProfile(undefined, developers), {
@@ -44,4 +44,22 @@ test('classifies backend work and only returns matching developer candidates', (
     eligibleDevelopersForTask({ deliveryType: 'backend' }, developers).map((developer) => developer.name),
     ['舒杰', '陈远志'],
   )
+})
+
+test('maps one normalized allocation profile to every selected feature key', () => {
+  const profiles = profilesForFeatureGroups([
+    { featureKey: 'prd:account' },
+    { featureKey: 'folder:invite' },
+    { featureKey: 'folder:invite' },
+  ], {
+    'folder:invite': {
+      frontendDeveloperIds: ['zeng-yuqiu'],
+      includeBackend: true,
+      backendOwnerId: 'shu-jie',
+    },
+  }, developers)
+
+  assert.deepEqual(Object.keys(profiles), ['prd:account', 'folder:invite'])
+  assert.equal(profiles['prd:account'].includeBackend, false)
+  assert.equal(profiles['folder:invite'].backendOwnerId, 'shu-jie')
 })
