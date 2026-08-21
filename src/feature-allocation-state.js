@@ -22,11 +22,13 @@ function editableAllocationProfile(value, developers) {
   const frontendDeveloperIds = Array.isArray(value.frontendDeveloperIds)
     ? [...new Set(value.frontendDeveloperIds.map((id) => String(id || '').trim()).filter((id) => frontendIds.has(id)))]
     : fallback.frontendDeveloperIds
+  const frontendOwnerId = String(value.frontendOwnerId || '').trim()
   const includeBackend = value.includeBackend === true
   const backendOwnerId = String(value.backendOwnerId || '').trim()
 
   return {
     frontendDeveloperIds,
+    frontendOwnerId: frontendDeveloperIds.includes(frontendOwnerId) ? frontendOwnerId : '',
     includeBackend,
     backendOwnerId: backendIds.has(backendOwnerId) ? backendOwnerId : '',
   }

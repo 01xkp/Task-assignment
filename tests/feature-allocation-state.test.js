@@ -12,6 +12,7 @@ test('uses one editable allocation profile for two PRDs in the same folder', () 
   assert.equal(result.groups.length, 1)
   assert.deepEqual(result.profiles['folder:邀请码'], {
     frontendDeveloperIds: ['xiang-kunpeng', 'zeng-yuqiu', 'zhang-xu'],
+    frontendOwnerId: '',
     includeBackend: false,
     backendOwnerId: '',
   })
@@ -21,15 +22,27 @@ test('prefers a feature persisted allocation profile over the legacy default', (
   const result = selectedFeatureAllocationState([
     {
       id: 'invite', title: '邀请码', sourceType: 'file', sourceLabel: '邀请码/开发.md',
-      allocationProfile: { frontendDeveloperIds: ['zeng-yuqiu'], includeBackend: true, backendOwnerId: 'shu-jie' },
+      allocationProfile: { frontendDeveloperIds: ['zeng-yuqiu'], frontendOwnerId: 'zeng-yuqiu', includeBackend: true, backendOwnerId: 'shu-jie' },
     },
   ], ['invite'], developers)
 
   assert.deepEqual(result.profiles['folder:邀请码'], {
     frontendDeveloperIds: ['zeng-yuqiu'],
+    frontendOwnerId: 'zeng-yuqiu',
     includeBackend: true,
     backendOwnerId: 'shu-jie',
   })
+})
+
+test('clears a persisted owner that is not in the frontend candidate pool', () => {
+  const result = selectedFeatureAllocationState([
+    {
+      id: 'invite', title: '邀请码', sourceType: 'file', sourceLabel: '邀请码/开发.md',
+      allocationProfile: { frontendDeveloperIds: ['zeng-yuqiu'], frontendOwnerId: 'xiang-kunpeng', includeBackend: false, backendOwnerId: '' },
+    },
+  ], ['invite'], developers)
+
+  assert.equal(result.profiles['folder:邀请码'].frontendOwnerId, '')
 })
 
 test('requires a backend owner when backend tasks are enabled', () => {
