@@ -55,9 +55,15 @@ export function insertParsedPrds(state, parsedPrds, { createId, now }) {
   return { imported, duplicates }
 }
 
-export function toPublicPrd(prd) {
-  const { content, ...publicPrd } = prd
-  return publicPrd
+export function toPublicPrd(prd, { includeContent = false } = {}) {
+  const { content, allocationProfile, ...publicPrd } = prd
+  const result = { ...publicPrd }
+  if (includeContent) result.content = content
+  if (allocationProfile !== undefined) {
+    const { frontendOwnerId, ...publicAllocationProfile } = allocationProfile || {}
+    result.allocationProfile = publicAllocationProfile
+  }
+  return result
 }
 
 export function markPrdAllocationStarted(prd, startedAt) {

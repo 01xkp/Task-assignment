@@ -120,7 +120,7 @@ function formatPrdDate(prd) {
       <div>
         <p class="eyebrow">AGINO · FLUTTER MULTI-PLATFORM</p>
         <h1>多端开发任务</h1>
-        <p>按业务模块、平台主责与全平台累计工时统一分配。</p>
+        <p>按业务功能、相关技能与全平台累计工时统一分配。</p>
       </div>
       <div class="heading-context" v-if="latestPrd">
         <FileText :size="17" />

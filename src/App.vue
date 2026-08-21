@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   AlertCircle,
   BookOpen,
@@ -27,7 +27,6 @@ import TaskDrawer from './components/TaskDrawer.vue'
 import AdjustmentModal from './components/AdjustmentModal.vue'
 import DeletePrdModal from './components/DeletePrdModal.vue'
 import DeleteKnowledgeModal from './components/DeleteKnowledgeModal.vue'
-import AnalysisProgress from './components/AnalysisProgress.vue'
 
 const activeView = ref('workbench')
 const workspace = ref(null)
@@ -35,6 +34,7 @@ const loading = ref(true)
 const loadError = ref('')
 const showImport = ref(false)
 const importMode = ref('file')
+const initialImportPrdIds = ref([])
 const showMobileMenu = ref(false)
 const selectedTaskId = ref('')
 const adjustment = ref(null)
@@ -42,12 +42,8 @@ const deleteTarget = ref(null)
 const deletingPrd = ref(false)
 const knowledgeDeleteTarget = ref(null)
 const deletingKnowledge = ref(false)
-const analyzingPrdId = ref('')
-const existingAnalysisProgress = ref(null)
-const existingAnalysisElapsed = ref(0)
 const globalSearch = ref('')
 const toast = ref(null)
-let existingAnalysisTimer = null
 
 const navigation = [
   { id: 'workbench', label: '任务工作台', icon: LayoutDashboard },
@@ -80,8 +76,9 @@ function navigate(view) {
   showMobileMenu.value = false
 }
 
-function openImport(mode = 'file') {
+function openImport(mode = 'file', initialPrdIds = []) {
   importMode.value = mode
+  initialImportPrdIds.value = mode === 'library' ? initialPrdIds : []
   showImport.value = true
 }
 
@@ -102,15 +99,6 @@ async function handleImported(result) {
   if (result.duplicates.length) messages.push(`跳过 ${result.duplicates.length} 份重复`)
   if (result.failed.length) messages.push(`${result.failed.length} 份读取失败`)
   notify(messages.join('，') || '未导入新的 PRD', result.failed.length ? 'error' : 'success')
-}
-
-async function handleAnalyzed(result) {
-  await loadState()
-  const actualModel = result.modelTrace?.draft?.responseModel || result.model
-  const verification = result.modelTrace?.draft?.responseModel ? `，网关确认 ${actualModel}` : ''
-  notify(`已生成 ${result.tasks.length} 个任务${result.reviewed ? '并完成复核' : ''}${verification}，耗时 ${Math.round((result.durationMs || 0) / 1000)} 秒`)
-  showImport.value = false
-  activeView.value = 'workbench'
 }
 
 async function handleBatchAnalyzed(summary) {
@@ -140,32 +128,12 @@ async function updateStatus(task, status) {
   }
 }
 
-async function analyzeExisting(prd) {
+function analyzeExisting(prd) {
   if (!workspace.value.model.configured) {
     notify('请先在 .env.local 中配置 OPENAI_API_KEY', 'error')
     return
   }
-  analyzingPrdId.value = prd.id
-  existingAnalysisProgress.value = { stage: 'connecting', percent: 2, message: '正在连接模型服务', model: workspace.value.model.model, reasoningEffort: workspace.value.model.reasoningEffort }
-  existingAnalysisElapsed.value = 0
-  window.clearInterval(existingAnalysisTimer)
-  existingAnalysisTimer = window.setInterval(() => { existingAnalysisElapsed.value += 1 }, 1000)
-  try {
-    notify(`正在分析「${prd.title}」`, 'progress')
-    const result = await api.analyzePrd(prd.id, true, {
-      onProgress: (progress) => { existingAnalysisProgress.value = progress },
-      requestTimeoutSeconds: workspace.value.model.requestTimeoutSeconds,
-    })
-    await handleAnalyzed(result)
-  } catch (error) {
-    await loadState()
-    notify(error.message, 'error')
-  } finally {
-    window.clearInterval(existingAnalysisTimer)
-    existingAnalysisTimer = null
-    analyzingPrdId.value = ''
-    existingAnalysisProgress.value = null
-  }
+  openImport('library', [prd.id])
 }
 
 async function deletePrd() {
@@ -205,7 +173,6 @@ async function deleteKnowledge() {
 }
 
 onMounted(loadState)
-onBeforeUnmount(() => window.clearInterval(existingAnalysisTimer))
 </script>
 
 <template>
@@ -303,7 +270,6 @@ onBeforeUnmount(() => window.clearInterval(existingAnalysisTimer))
         <PrdView
           v-else-if="activeView === 'prds'"
           :workspace="workspace"
-          :analyzing-prd-id="analyzingPrdId"
           @import="openImport()"
           @analyze="analyzeExisting"
           @delete="deleteTarget = $event"
@@ -329,6 +295,7 @@ onBeforeUnmount(() => window.clearInterval(existingAnalysisTimer))
       :model="workspace?.model"
       :workspace="workspace"
       :initial-mode="importMode"
+      :initial-prd-ids="initialImportPrdIds"
       @close="showImport = false"
       @imported="handleImported"
       @batch-analyzed="handleBatchAnalyzed"
@@ -365,16 +332,6 @@ onBeforeUnmount(() => window.clearInterval(existingAnalysisTimer))
       @close="knowledgeDeleteTarget = null"
       @confirm="deleteKnowledge"
     />
-
-    <Transition name="toast">
-      <div v-if="analyzingPrdId && existingAnalysisProgress" class="analysis-progress-float">
-        <AnalysisProgress
-          :progress="existingAnalysisProgress"
-          :elapsed-seconds="existingAnalysisElapsed"
-          title="正在重新分析 PRD"
-        />
-      </div>
-    </Transition>
 
     <Transition name="toast">
       <div v-if="toast" class="toast-message" :class="`toast-message--${toast.tone}`">

@@ -52,6 +52,26 @@ test('removes PRD content from the upload response item', () => {
   )
 })
 
+test('removes the legacy frontend owner from a public PRD allocation profile', () => {
+  const result = toPublicPrd({
+    id: 'prd-1',
+    title: '登录',
+    content: '不应返回',
+    allocationProfile: {
+      frontendDeveloperIds: ['zeng-yuqiu'],
+      frontendOwnerId: 'zeng-yuqiu',
+      includeBackend: true,
+      backendOwnerId: 'shu-jie',
+    },
+  })
+
+  assert.deepEqual(result.allocationProfile, {
+    frontendDeveloperIds: ['zeng-yuqiu'],
+    includeBackend: true,
+    backendOwnerId: 'shu-jie',
+  })
+})
+
 test('records allocation start and clears an earlier failure', () => {
   const prd = { id: 'prd-1', analysisStatus: 'failed', analysisError: '旧错误', taskCount: 0 }
 

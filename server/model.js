@@ -302,6 +302,7 @@ export function normalizeAllocationForProfile(result, profile, team = developers
   const selected = allocationTeam(profile, team)
   return {
     summary: String(result.summary || '已完成任务拆解'),
+    allocationProfile: selected.profile,
     tasks: (Array.isArray(result?.tasks) ? result.tasks : []).flatMap((task) => {
       const isBackend = taskDiscipline(task) === 'backend'
       if (isBackend && !selected.backend) return []
@@ -337,13 +338,13 @@ export function buildAllocationInstructions(profile, team = developers) {
     : '后端任务未启用，不得生成后端实现、服务端平台、后端负责人、产品、设计、发布管理或纯会议任务。'
   return `你是 Agino Flutter 多端客户端与 Go 服务端协作的资深研发项目经理。
 
-本功能可分配的前端人员只有：${frontendNames}。${backendInstruction}
+本功能可分配的前端候选人员只有：${frontendNames}。每个前端任务的 suggestedAssignee 必须从这些候选人员中选择，不得使用候选池外的人员。${backendInstruction}
 
 拆分规则：
 1. 先识别受影响的真实业务模块和代码目录，再判断 Android、iOS、macOS、Windows、Linux 的影响面；不得因为项目支持五个平台就机械地为所有平台生成任务。
 2. 跨平台共用的 Dart、Repository、ViewModel、Domain 或 Widget 实现只创建一条共享实现任务，不得按平台复制。只有原生配置、权限、生命周期、桌面窗口/托盘、平台差异交互和真实设备验收才拆为平台适配或平台验收。
-3. 前端任务只能分配给本功能已选择的前端人员；不可用人员不得出现在结果中。当某平台原主责人未被选择时，只能在已选择的前端人员中重新分配：先匹配主责平台，再匹配技能，最后比较当前总工时；本次方案内已分配工时也必须累加。
-4. 负载计算必须覆盖每个人所有平台的现有未完成工时，优先避免超过 40h，不能为了平均而把平台原生工作交给不匹配的候选人。
+3. 前端按真实业务功能模块分配：同一功能的开发、适配和验收任务应优先保持同一人承接；只有独立的功能子模块才可分给不同候选人。不得依据候选人的主责平台分配或拆分任务，主责平台只用于理解影响面和验收覆盖。
+4. 分配时先比较功能相关技能、每个人所有平台的现有未完成工时及本次方案累计工时；优先避免超过 40h，也不得为了平均而机械拆分同一功能。
 5. 输入可能包含同一功能的开发说明、交付说明和验收说明等多份来源文档。它们是互补材料，不是独立需求；只输出一套覆盖完整功能的任务，尤其不得生成重复后端任务。
 6. 每项任务必须提供真实 module、modulePath、workType、platforms、明确验收标准和标题依赖。后端参考只可作为通用上下文：Go 服务常使用 handler/service/repository 分层，模块可能位于 internal/modules/*，迁移可能位于 internal/db/migrations，API 可能位于 cmd/api；这些路径不是必须生成的结果。`
 }
@@ -490,7 +491,7 @@ export async function suggestReassignment({ task, knowledge, workloads }) {
   const discipline = taskDiscipline(task)
   const system = discipline === 'backend'
     ? '你是 Agino Go 后端任务调度者。针对被拒绝或需要调整的服务端任务，只能从给定后端候选人中推荐一人。按所有未完成工时、Go 服务技能和模块上下文平衡，并结合历史原因避免重复冲突。'
-    : '你是 Agino Flutter 多端任务调度者。针对被拒绝或需要调整的客户端任务，只能从给定前端候选人中推荐一人。平台专属任务优先遵守 Windows/Linux、Android、iOS/macOS 的主责边界；共享实现按所有平台未完成总工时、技能和模块上下文平衡。结合历史原因避免重复冲突。'
+    : '你是 Agino Flutter 任务调度者。针对被拒绝或需要调整的客户端任务，只能从给定前端候选人中推荐一人。按功能模块、所有平台未完成总工时、技能和模块上下文平衡；不得依据主责平台机械分配。结合历史原因避免重复冲突。'
   const user = `工程：${formatProjectContext()}\n\n任务：${JSON.stringify(task)}\n\n团队全平台负载：\n${teamContext(workloads)}\n\n相关历史：\n${formatKnowledge(knowledge)}\n\n候选人：${candidates.join('、')}`
   return requestModel({ model: config.model, system, user, schema, schemaName: 'reassignment' })
 }

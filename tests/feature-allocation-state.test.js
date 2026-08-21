@@ -12,13 +12,12 @@ test('uses one editable allocation profile for two PRDs in the same folder', () 
   assert.equal(result.groups.length, 1)
   assert.deepEqual(result.profiles['folder:邀请码'], {
     frontendDeveloperIds: ['xiang-kunpeng', 'zeng-yuqiu', 'zhang-xu'],
-    frontendOwnerId: '',
     includeBackend: false,
     backendOwnerId: '',
   })
 })
 
-test('prefers a feature persisted allocation profile over the legacy default', () => {
+test('prefers a feature persisted candidate profile while ignoring legacy frontend owner data', () => {
   const result = selectedFeatureAllocationState([
     {
       id: 'invite', title: '邀请码', sourceType: 'file', sourceLabel: '邀请码/开发.md',
@@ -28,13 +27,12 @@ test('prefers a feature persisted allocation profile over the legacy default', (
 
   assert.deepEqual(result.profiles['folder:邀请码'], {
     frontendDeveloperIds: ['zeng-yuqiu'],
-    frontendOwnerId: 'zeng-yuqiu',
     includeBackend: true,
     backendOwnerId: 'shu-jie',
   })
 })
 
-test('clears a persisted owner that is not in the frontend candidate pool', () => {
+test('does not expose a persisted legacy owner in editable allocation state', () => {
   const result = selectedFeatureAllocationState([
     {
       id: 'invite', title: '邀请码', sourceType: 'file', sourceLabel: '邀请码/开发.md',
@@ -42,7 +40,7 @@ test('clears a persisted owner that is not in the frontend candidate pool', () =
     },
   ], ['invite'], developers)
 
-  assert.equal(result.profiles['folder:邀请码'].frontendOwnerId, '')
+  assert.equal(Object.hasOwn(result.profiles['folder:邀请码'], 'frontendOwnerId'), false)
 })
 
 test('requires a backend owner when backend tasks are enabled', () => {

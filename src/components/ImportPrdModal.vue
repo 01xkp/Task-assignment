@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { Bot, CheckCircle2, FileArchive, FileText, FolderOpen, Link2, LoaderCircle, Server, Sparkles, Type, UploadCloud, UsersRound, X } from 'lucide-vue-next'
 import { api } from '../api.js'
 import { addSelectedFiles, folderMarkdownFiles, relativeFilePath, selectedFileKey } from '../import-file-selection.js'
-import { isImportResultScreen, shouldShowFeatureAllocation } from '../import-modal-state.js'
+import { initialLibrarySelection, isImportResultScreen, shouldShowFeatureAllocation } from '../import-modal-state.js'
 import { allocationStatusPresentation } from '../prd-allocation-status.js'
 import { isAllocationProfileComplete, selectedFeatureAllocationState } from '../feature-allocation-state.js'
 import AnalysisProgress from './AnalysisProgress.vue'
@@ -12,6 +12,7 @@ const props = defineProps({
   model: Object,
   workspace: { type: Object, required: true },
   initialMode: { type: String, default: 'file' },
+  initialPrdIds: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['close', 'imported', 'batch-analyzed', 'error'])
 
@@ -24,7 +25,7 @@ const url = ref('')
 const title = ref('')
 const content = ref('')
 const importResult = ref(null)
-const selectedPrdIds = ref([])
+const selectedPrdIds = ref(initialLibrarySelection(props.workspace.prds, props.initialPrdIds))
 const allocationProfiles = ref({})
 const busy = ref(false)
 const analyzing = ref(false)

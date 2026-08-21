@@ -56,3 +56,24 @@ test('returns public PRDs ordered by most recent update', () => {
 
   assert.deepEqual(state.prds.map((prd) => prd.id), ['new', 'old'])
 })
+
+test('does not expose a legacy frontend owner through the public PRD list', () => {
+  const state = publicState({
+    prds: [{
+      id: 'prd-1',
+      title: '邀请码',
+      content: '邀请码需求',
+      allocationProfile: {
+        frontendDeveloperIds: ['zeng-yuqiu'],
+        frontendOwnerId: 'zeng-yuqiu',
+        includeBackend: false,
+        backendOwnerId: '',
+      },
+    }],
+    tasks: [],
+    knowledge: [],
+    activity: [],
+  })
+
+  assert.equal(Object.hasOwn(state.prds[0].allocationProfile, 'frontendOwnerId'), false)
+})

@@ -151,6 +151,7 @@ async function runFeatureAnalysis(prdId, options = {}, onProgress = () => {}, si
       onProgress,
       signal,
     })
+    const resolvedAllocationProfile = result.allocationProfile
     onProgress({ stage: 'saving', percent: 96, message: '正在保存任务分配和分析记录', model: configuredModel })
 
     const createdAt = new Date().toISOString()
@@ -182,7 +183,7 @@ async function runFeatureAnalysis(prdId, options = {}, onProgress = () => {}, si
         Object.assign(storedPrd, {
           featureKey: featureGroup.featureKey,
           featureName: featureGroup.featureName,
-          allocationProfile,
+          allocationProfile: resolvedAllocationProfile,
           analyzedAt: createdAt,
           analysisFinishedAt: createdAt,
           analysisError: '',
@@ -218,7 +219,7 @@ async function runFeatureAnalysis(prdId, options = {}, onProgress = () => {}, si
       featureKey: featureGroup.featureKey,
       featureName: featureGroup.featureName,
       prdIds: featureGroup.prdIds,
-      allocationProfile,
+      allocationProfile: resolvedAllocationProfile,
       model: actualModel,
       requestedModel: configuredModel,
       reasoningEffort,
@@ -253,7 +254,7 @@ app.get('/api/prds/:id', async (request, response) => {
   const state = await readState()
   const prd = state.prds.find((item) => item.id === request.params.id)
   if (!prd) return response.status(404).json({ error: 'PRD 不存在' })
-  response.json(prd)
+  response.json(toPublicPrd(prd, { includeContent: true }))
 })
 
 app.post('/api/prds/upload', receivePrdFiles, async (request, response) => {

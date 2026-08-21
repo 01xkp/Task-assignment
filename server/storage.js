@@ -3,7 +3,7 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { config } from './config.js'
 import { normalizeUploadedFilename } from './documents.js'
-import { sortPrdsNewestFirst } from './prds.js'
+import { sortPrdsNewestFirst, toPublicPrd } from './prds.js'
 import { projectContext } from './project-context.js'
 
 export const developers = [
@@ -113,11 +113,11 @@ export async function updateState(mutator) {
 export function publicState(state) {
   return {
     ...state,
-    prds: sortPrdsNewestFirst(state.prds).map(({ content, ...prd }) => ({
-      ...prd,
+    prds: sortPrdsNewestFirst(state.prds).map((prd) => ({
+      ...toPublicPrd(prd),
       sourceLabel: prd.sourceType === 'file' ? normalizeUploadedFilename(prd.sourceLabel) : prd.sourceLabel,
-      excerpt: content.slice(0, 180),
-      contentLength: content.length,
+      excerpt: prd.content.slice(0, 180),
+      contentLength: prd.content.length,
     })),
     developers,
     project: {

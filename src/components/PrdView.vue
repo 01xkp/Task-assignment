@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { Bot, Boxes, FileCheck2, FileText, Link2, MonitorSmartphone, Plus, Search, Trash2, UploadCloud } from 'lucide-vue-next'
 import { allocationActionLabel, allocationStatusPresentation } from '../prd-allocation-status.js'
 
-const props = defineProps({ workspace: { type: Object, required: true }, analyzingPrdId: { type: String, default: '' } })
+const props = defineProps({ workspace: { type: Object, required: true } })
 const emit = defineEmits(['import', 'analyze', 'delete'])
 const query = ref('')
 
@@ -58,10 +58,10 @@ function sourceIcon(type) {
             <p v-if="prd.analysisStatus === 'failed' && prd.analysisError" class="document-analysis-error">{{ prd.analysisError }}</p>
             <strong>{{ prd.taskCount || 0 }}<small> 个任务</small></strong>
           </div>
-          <button class="secondary-button document-action" :disabled="Boolean(analyzingPrdId) || prd.analysisStatus === 'analyzing'" @click="emit('analyze', prd)">
+          <button class="secondary-button document-action" :disabled="prd.analysisStatus === 'analyzing'" @click="emit('analyze', prd)">
             <Bot :size="16" />{{ allocationActionLabel(prd.analysisStatus) }}
           </button>
-          <button class="icon-button document-delete" title="删除 PRD" :disabled="Boolean(analyzingPrdId)" @click="emit('delete', prd)"><Trash2 :size="18" /></button>
+          <button class="icon-button document-delete" title="删除 PRD" @click="emit('delete', prd)"><Trash2 :size="18" /></button>
         </article>
         <div v-if="!filteredPrds.length" class="empty-table document-empty">
           <FileText :size="25" />

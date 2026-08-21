@@ -6,31 +6,33 @@ import { eligibleDevelopersForTask, normalizeAllocationProfile, profilesForFeatu
 test('defaults legacy PRDs to every frontend developer and no backend work', () => {
   assert.deepEqual(normalizeAllocationProfile(undefined, developers), {
     frontendDeveloperIds: ['xiang-kunpeng', 'zeng-yuqiu', 'zhang-xu'],
-    frontendOwnerId: '',
     includeBackend: false,
     backendOwnerId: '',
   })
 })
 
-test('keeps one resolved frontend owner from the selected candidate pool', () => {
+test('ignores a legacy frontend owner and keeps the editable candidate pool', () => {
   assert.deepEqual(normalizeAllocationProfile({
     frontendDeveloperIds: ['xiang-kunpeng', 'zeng-yuqiu'],
     frontendOwnerId: 'zeng-yuqiu',
     includeBackend: false,
   }, developers), {
     frontendDeveloperIds: ['xiang-kunpeng', 'zeng-yuqiu'],
-    frontendOwnerId: 'zeng-yuqiu',
     includeBackend: false,
     backendOwnerId: '',
   })
 })
 
-test('rejects a frontend owner outside the candidate pool', () => {
-  assert.throws(() => normalizeAllocationProfile({
+test('ignores a legacy frontend owner outside the candidate pool', () => {
+  assert.deepEqual(normalizeAllocationProfile({
     frontendDeveloperIds: ['zeng-yuqiu'],
     frontendOwnerId: 'xiang-kunpeng',
     includeBackend: false,
-  }, developers), { code: 'ALLOCATION_PROFILE_INVALID' })
+  }, developers), {
+    frontendDeveloperIds: ['zeng-yuqiu'],
+    includeBackend: false,
+    backendOwnerId: '',
+  })
 })
 
 test('keeps a single selected backend owner for a feature', () => {
@@ -40,7 +42,6 @@ test('keeps a single selected backend owner for a feature', () => {
     backendOwnerId: 'shu-jie',
   }, developers), {
     frontendDeveloperIds: ['zeng-yuqiu'],
-    frontendOwnerId: '',
     includeBackend: true,
     backendOwnerId: 'shu-jie',
   })

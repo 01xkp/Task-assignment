@@ -15,7 +15,6 @@ export function developersByDiscipline(developers, discipline) {
 export function defaultAllocationProfile(developers) {
   return {
     frontendDeveloperIds: developersByDiscipline(developers, 'frontend').map((developer) => developer.id),
-    frontendOwnerId: '',
     includeBackend: false,
     backendOwnerId: '',
   }
@@ -30,7 +29,6 @@ export function normalizeAllocationProfile(value, developers) {
     : []
   const frontendIds = new Set(developersByDiscipline(developers, 'frontend').map((developer) => developer.id))
   const backendIds = new Set(developersByDiscipline(developers, 'backend').map((developer) => developer.id))
-  const frontendOwnerId = String(value.frontendOwnerId || '').trim()
   const includeBackend = value.includeBackend === true
   const backendOwnerId = String(value.backendOwnerId || '').trim()
 
@@ -40,16 +38,12 @@ export function normalizeAllocationProfile(value, developers) {
   if (new Set(frontendDeveloperIds).size !== frontendDeveloperIds.length) {
     throw invalidProfile('前端开发人员不能重复选择')
   }
-  if (frontendOwnerId && (!frontendIds.has(frontendOwnerId) || !frontendDeveloperIds.includes(frontendOwnerId))) {
-    throw invalidProfile('前端主负责人必须属于已选择的前端候选人员')
-  }
   if (includeBackend && !backendIds.has(backendOwnerId)) {
     throw invalidProfile('启用后端任务时必须选择有效的后端负责人')
   }
 
   return {
     frontendDeveloperIds,
-    frontendOwnerId,
     includeBackend,
     backendOwnerId: includeBackend ? backendOwnerId : '',
   }
