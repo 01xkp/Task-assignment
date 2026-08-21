@@ -2131,6 +2131,22 @@ button:disabled {
 .feature-allocation-editor__backend select:focus { border-color: var(--green); outline: 2px solid rgba(15, 138, 106, .16); outline-offset: 1px; }
 .feature-allocation-editor__error { margin: 8px 0 0; color: var(--coral); font-size: 10px; }
 
+.delivery-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  margin-left: 7px;
+  padding: 0 5px;
+  border: 1px solid #c7d5f1;
+  border-radius: 4px;
+  color: #365da0;
+  background: #f4f7ff;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1;
+  vertical-align: middle;
+}
+
 .batch-progress-summary {
   display: grid;
   gap: 6px;

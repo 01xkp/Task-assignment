@@ -198,7 +198,7 @@ function formatPrdDate(prd) {
                   <div v-if="expandedCategoryKeys.has(categoryKey(group.featureKey, category.workType))" class="prd-task-category__tasks">
                     <div class="grouped-task-row grouped-task-row--head"><span>任务 / 模块</span><span>优先级</span><span>负责人</span><span>工时</span><span>截止</span><span>状态</span><span></span></div>
                     <div v-for="task in category.tasks" :key="task.id" class="grouped-task-row" :class="{ 'row--attention': task.status === '待重分配' }" @click="emit('select-task', task)">
-                      <div class="task-title-cell"><span class="priority-line" :class="`priority-line--${task.priority}`"></span><div><strong>{{ task.title }}</strong><small>{{ task.module }}<template v-if="task.platforms?.length"> · {{ task.platforms.join(' / ') }}</template></small></div></div>
+                      <div class="task-title-cell"><span class="priority-line" :class="`priority-line--${task.priority}`"></span><div><strong>{{ task.title }}<span v-if="task.deliveryType === 'backend'" class="delivery-badge">后端</span></strong><small>{{ task.module }}<template v-if="task.platforms?.length"> · {{ task.platforms.join(' / ') }}</template></small></div></div>
                       <span class="priority-text" :class="`priority-text--${task.priority}`">{{ task.priority }}</span>
                       <div class="assignee-cell"><div class="avatar" :style="{ background: workspace.developers.find((item) => item.name === task.assignee)?.color }">{{ task.assignee?.slice(0, 1) }}</div><span>{{ task.assignee }}</span></div>
                       <span class="mono-value">{{ task.estimateHours }}h</span>

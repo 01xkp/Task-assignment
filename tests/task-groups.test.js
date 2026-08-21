@@ -34,3 +34,17 @@ test('hides feature parents without matching tasks when filters are active', () 
 
   assert.deepEqual(groups.map((group) => group.featureKey), ['folder:内测邀请码注册-v2'])
 })
+
+test('renders backend work as a child category of its feature', () => {
+  const groups = groupTasksByFeature(prds, [
+    task({
+      id: 'backend',
+      workType: '后端实现',
+      deliveryType: 'backend',
+      platforms: ['服务端'],
+      assignee: '舒杰',
+    }),
+  ])
+
+  assert.deepEqual(groups[0].categories.map((category) => category.workType), ['后端实现'])
+})

@@ -1,6 +1,6 @@
 import { applyFeatureIdentity, groupPrdsByFeature } from '../shared/feature-modules.js'
 
-export const workTypes = ['共享实现', '平台适配', '平台验收']
+export const workTypes = ['共享实现', '平台适配', '平台验收', '后端实现']
 
 function latestPrd(prds) {
   return prds.reduce((latest, prd) => {
