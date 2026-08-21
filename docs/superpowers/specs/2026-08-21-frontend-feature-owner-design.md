@@ -1,55 +1,38 @@
-# Frontend Feature Owner Design
+# Frontend Feature Allocation Design
 
 ## Goal
 
-Change frontend task allocation from platform-based distribution to feature-module ownership. A feature module has exactly one frontend owner for each analysis run. All frontend tasks generated for that module are assigned to that owner.
+Allocate frontend work by functional module rather than by platform ownership. A feature keeps a multi-select frontend candidate pool, and the model may assign individual frontend tasks only among those candidates according to the function, skills, and total current workload. No unique frontend owner is required or persisted.
 
 ## User Workflow
 
-1. In the PRD analysis dialog, each feature module retains the existing multi-select frontend control. The selected people form the module's frontend candidate pool.
-2. The user may optionally enable backend work and selects one backend owner as today.
-3. When analysis starts, the model chooses one frontend owner from the candidate pool using the supplied active workload and relevant skills.
-4. The server validates that choice and gives every generated frontend task in the feature module to the chosen owner. The selected backend owner remains the sole owner of generated backend tasks.
-5. When a user changes a frontend owner from the workbench, the application changes every non-terminal frontend task in that feature module together. Backend tasks and terminal frontend tasks are not changed.
+1. The PRD analysis dialog provides frontend candidate checkboxes for each selected feature. At least one frontend candidate is required.
+2. Backend work is optional. When enabled, the user selects exactly one backend owner, and every generated backend task belongs to that owner.
+3. A document's `重新分配` action opens the same PRD analysis dialog in the uploaded-PRD view, with only that document selected and its saved candidate choices prefilled.
+4. The user can change frontend candidates and the optional backend setting before starting the analysis. It then uses the normal batch-analysis path, even when only one PRD is selected.
 
-## Data Model
+## Data And Model Contract
 
-- `frontendDeveloperIds` remains a non-empty array of valid frontend developer IDs. It is the editable candidate pool, so existing multi-select profiles stay valid.
-- Add optional `frontendOwnerId` to the normalized and persisted allocation profile. It records the resolved owner of the latest analysis or a module-level frontend reassignment.
-- `includeBackend` and `backendOwnerId` retain their current behavior.
-- Existing profiles without `frontendOwnerId` remain readable. Existing tasks are not modified during migration; a new analysis or explicit module-level reassignment establishes the current owner.
-
-## Model Contract
-
-- The analysis response includes a required `frontendOwner` whose value is one of the selected frontend candidates.
-- The prompt directs the model to choose that person once for the entire feature based on workload and skills, then to plan all frontend tasks for that one owner.
-- The server rejects a missing or non-candidate owner instead of silently substituting one.
-- After response validation, the server overwrites every frontend task assignee with the resolved frontend owner. This makes the one-owner rule independent of individual task output variation.
-- The backend schema branch remains optional and, when enabled, only permits the selected backend owner.
-
-## UI Changes
-
-- Rename the frontend section from "可用前端人员" to "前端候选人员".
-- Add concise supporting text that the model selects one owner from the selected candidates and assigns the complete feature module to that person.
-- Keep checkbox multi-select controls. Do not expose a platform-specific frontend allocation control.
-- In the workbench, frontend reassignment is a module-level action for active frontend tasks rather than an isolated task change. The UI clearly identifies the selected module and affected active task count before confirmation.
+- `frontendDeveloperIds` is the complete and non-empty frontend candidate pool. It remains multi-select.
+- The allocation profile has no `frontendOwnerId`. Historical profiles containing that property are tolerated as unknown legacy data but it is not emitted, read, or used for assignment.
+- The model response has `summary` and `tasks`; it has no top-level `frontendOwner` field.
+- Frontend task `suggestedAssignee` is constrained to selected frontend candidate names. The server preserves a valid task-level choice and falls back only when the returned name is invalid.
+- A model prompt must state that platform responsibility is context for estimating impact, never a rule for splitting or selecting a frontend assignee. It must balance functional cohesion, skills, existing all-platform workload, and workload accumulated inside the current allocation.
+- Backend task `suggestedAssignee` remains constrained and normalized to the selected backend owner.
 
 ## Failure Handling
 
-- Analysis cannot begin unless a feature has at least one valid frontend candidate and, when backend work is enabled, one valid backend owner.
-- Invalid model ownership data fails the analysis before tasks or allocation profiles are saved. The existing failed-analysis status and retry path communicate the error.
-- Module-level reassignment validates that the destination developer has frontend discipline. Cross-discipline reassignment remains rejected.
+- Analysis is disabled until every selected feature has a valid non-empty frontend candidate pool and any enabled backend work has one backend owner.
+- A reanalysis does not call the model before the allocation dialog has been completed and its normal validation passes.
+- If a model response uses a frontend name outside the selected pool, normalization falls back to the first selected frontend candidate instead of accepting an unselected person.
 
-## Compatibility
+## Scope Boundaries
 
-- Historical completed and cancelled tasks preserve their current assignee.
-- Historical active frontend tasks are unchanged until the user deliberately performs a module-level reassignment or reanalyzes the feature.
-- The backend feature-owner workflow, duplicate prevention, PRD grouping, and model selection configuration remain unchanged.
+- This change does not alter manual task reassignment. It continues to operate on the individual selected task.
+- This change does not alter the backend feature-owner workflow, feature deduplication, PRD grouping, or `OPENAI_MODEL` configuration.
 
 ## Verification
 
-- Unit-test profile normalization with multiple frontend candidates and one resolved owner, including invalid owner rejection.
-- Unit-test model schema, prompt, and result normalization so every frontend task receives the resolved owner.
-- Unit-test feature-level frontend reassignment to update all active frontend tasks while preserving backend and terminal tasks.
-- Exercise the PRD dialog with multiple frontend candidates and backend enabled, then verify that generated tasks have one frontend owner per feature module.
-- Run the full test suite and production build before commit and deployment.
+- Unit-test schema, instructions, and output normalization with two frontend candidates to prove no unique owner is required and valid task-level assignments are retained.
+- Unit-test the reanalysis selection state to prove it preselects one clicked PRD while retaining its saved candidate profile.
+- Run the full Node test suite, production build, whitespace check, and local browser workflow before commit.
